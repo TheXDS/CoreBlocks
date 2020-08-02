@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -61,14 +62,22 @@ namespace TheXDS.CoreBlocks
             TransformRotate(x, y, rotation, ClearBlock);
         }
 
+        private void TransformRotate(in byte shapeData, in int x, in int y, in byte r, Action<int, int> action)
+        {
+            TransformRotate(shapeData, x, y, r, (nx, ny) => { action(nx, ny); return true; });
+        }
         private void TransformRotate(in int x, in int y, in byte r, Action<int, int> action)
         {
-            TransformRotate(x, y, r, (nx, ny) => { action(nx, ny); return true; });
+            TransformRotate(Shapes[_shape], x, y, r, (nx, ny) => { action(nx, ny); return true; });
         }
 
         private void TransformRotate(in int x, in int y, in byte r, Func<int, int, bool> action)
         {
-            var shapeData = Shapes[_shape];
+            TransformRotate(Shapes[_shape], x, y, r, action);
+        }
+
+        private void TransformRotate(byte shapeData, in int x, in int y, in byte r, Func<int, int, bool> action)
+        {
             for (byte j = 0; j < 8; j++)
             {
                 if (((shapeData << j) & 128) != 0)
@@ -124,6 +133,8 @@ namespace TheXDS.CoreBlocks
             }
             Console.SetCursorPosition(0, _wellHeight + 1);
             Console.Write($"+{new string('-', _wellWidth * 2)}+");
+            Console.SetCursorPosition(_wellWidth * 2 + 4, 6);
+            Console.Write("Siguiente:");
         }
 
         public Task PlayAsync()
@@ -159,25 +170,37 @@ namespace TheXDS.CoreBlocks
 
         private void ShapeLoop()
         {
+            _nextShape = (byte)_rnd.Next(Shapes.Length);
+            _nextR = (byte)_rnd.Next(4);
             while (KeepPlaying)
             {
-                _shape = (byte)_rnd.Next(Shapes.Length);
+                SelectNextShape();
 
                 _px = (_wellWidth - 2) / 2;
-                _py = 0;
-                _r = (byte)_rnd.Next(4);
+                _py = -1;
 
                 while (Fits(0, 1, 0) == true)
                 {
                     UpdateShape(0, 1, 0);
                     Thread.Sleep(1000 / Level);
                 }
-                if (_py < 1) break;
+                if (_py < 0) break;
+                //Thread.Sleep(1000 - (1000 / Level)); //Permitir movimiento por 1000 ms al llegar al fondo
                 TransformRotate(_px, _py, _r, SetWellBits);
                 CheckLines();
             }
             KeepPlaying = false;
             PrintMessage("Fin del juego.");
+        }
+
+        private void SelectNextShape()
+        {
+            _shape = _nextShape;
+            _r = _nextR;
+            ClearShape(_wellWidth + 2, 7, _r);
+            _nextShape = (byte)_rnd.Next(Shapes.Length);
+            _nextR = (byte)_rnd.Next(4);
+            TransformRotate(Shapes[_nextShape], _wellWidth + 2, 7, _nextR, (px, py)=> DrawBlock((byte)(_nextShape + 1), px, py));
         }
 
         private void CheckLines()
@@ -299,6 +322,9 @@ namespace TheXDS.CoreBlocks
         /// Pieza activa.
         /// </summary>
         private byte _shape;
+
+        private byte _nextShape;
+        private byte _nextR;
 
         private int _combo;
 
