@@ -17,7 +17,7 @@ namespace TheXDS.CoreBlocks
     internal class GameField
     {
         private const int _wellWidth = 14;
-        private const int _wellHeight = 20;
+        private const int _wellHeight = 24;
 
         private static readonly Random _rnd = new Random();
         private static readonly byte[] Shapes =
@@ -43,7 +43,6 @@ namespace TheXDS.CoreBlocks
         }
 
         private void DrawBlock(int x, int y) => DrawBlock((byte)(_shape + 1), x, y);
-
 
         private void ClearBlock(int x, int y)
         {
@@ -164,7 +163,7 @@ namespace TheXDS.CoreBlocks
             {
                 _shape = (byte)_rnd.Next(Shapes.Length);
 
-                _px = _wellWidth / 2;
+                _px = (_wellWidth - 2) / 2;
                 _py = 0;
                 _r = (byte)_rnd.Next(4);
 
@@ -209,31 +208,42 @@ namespace TheXDS.CoreBlocks
             }
             if (lines > 0)
             {
-                DrawWell();
-                if (_combo > 0)
-                {
-                    PrintMessage(lines switch
-                    {
-                        1 => $"1 Línea (x{_combo} Combo)",                        
-                        _ => $"{lines} Líneas!! (x{_combo} Combo)"
-                    });
-                }
-                else
-                {
-                    PrintMessage(lines switch
-                    {
-                        1 => "1 Línea",
-                        2 => "2 Líneas!",
-                        3 => "3 Líneas!!",
-                        4 => "4 Líneas!!!",
-                        _ => $"WTF!? {lines} LÍNEAS!?"
-                    });
-                }
-                _combo++;
+                CheckScore(lines);
             }
             else
             {
                 _combo = 0;
+            }
+        }
+
+        private void CheckScore(int lines)
+        {
+            DrawWell();
+            if (_combo > 0)
+            {
+                PrintMessage(lines switch
+                {
+                    1 => $"1 Línea (x{_combo} Combo)",                        
+                    _ => $"{lines} Líneas!! (x{_combo} Combo)"
+                });
+            }
+            else
+            {
+                PrintMessage(lines switch
+                {
+                    1 => "1 Línea",
+                    2 => "2 Líneas!",
+                    3 => "3 Líneas!!",
+                    4 => "4 Líneas!!!",
+                    _ => $"WTF!? {lines} LÍNEAS!?"
+                });
+            }
+            _combo++;
+            Score += (lines * 100) * _combo;
+            PrintMessage($"Puntaje {Score}", 3);
+            if (Score > 1000 * Level)
+            {
+                PrintMessage($"Nivel {++Level}", 4);
             }
         }
 
@@ -303,13 +313,19 @@ namespace TheXDS.CoreBlocks
         /// </summary>
         public bool KeepPlaying { get; set; } = true;
 
-        private async void PrintMessage(string message)
+        private async void PrintMessage(string message, int line = 1)
         {
-            Console.SetCursorPosition(_wellWidth * 2 + 2, 1);
-            Console.WriteLine(message);
+            lock (_syncLock)
+            {
+                Console.SetCursorPosition(_wellWidth * 2 + 2, line);
+                Console.WriteLine(message);
+            }
             await Task.Delay(3000);
-            Console.SetCursorPosition(_wellWidth * 2 + 2, 1);
-            Console.WriteLine(new string(' ', message.Length));
+            lock (_syncLock)
+            {
+                Console.SetCursorPosition(_wellWidth * 2 + 2, line);
+                Console.WriteLine(new string(' ', message.Length));
+            }
         }
     }
 }
