@@ -31,13 +31,31 @@ using System.Collections.Generic;
 
 namespace TheXDS.CoreBlocks
 {
+    /// <summary>
+    /// Define una instancia del área de juego.
+    /// </summary>
     internal class GameField
     {
         #region Configuración
 
+        /// <summary>
+        /// Define el ancho del área de juego.
+        /// </summary>
         private const int _wellWidth = 10;
+
+        /// <summary>
+        /// Define el alto del área de juego.
+        /// </summary>
         private const int _wellHeight = 24;
+
+        /// <summary>
+        /// Offset posicional X del área de juego.
+        /// </summary>
         private const int _wellXOffset = 12;
+
+        /// <summary>
+        /// Offset posicional Y del área de juego.
+        /// </summary>
         private const int _wellYOffset = 0;
 
         #endregion
@@ -83,6 +101,66 @@ namespace TheXDS.CoreBlocks
         /// Contiene el área de juego activa.
         /// </summary>
         private readonly byte?[,] _well = new byte?[_wellWidth, _wellHeight];
+
+        /// <summary>
+        /// Rotación actual de la pieza.
+        /// </summary>
+        private byte _r = 0;
+
+        /// <summary>
+        /// Posición X actual de la pieza.
+        /// </summary>
+        private int _px;
+
+        /// <summary>
+        /// Posición Y actual de la pieza.
+        /// </summary>
+        private int _py;
+
+        /// <summary>
+        /// Pieza activa.
+        /// </summary>
+        private byte _shape;
+
+        /// <summary>
+        /// Siguiente figura
+        /// </summary>
+        private byte _nextShape;
+
+        /// <summary>
+        /// Pieza almacenada en el Hold.
+        /// </summary>
+        private byte? _hold = null;
+
+        /// <summary>
+        /// Estado actual del Hold.
+        /// </summary>
+        private bool _holdUsed = false;
+
+        /// <summary>
+        /// Combo alcanzado.
+        /// </summary>
+        private int _combo;
+
+        /// <summary>
+        /// Obtiene o establece el nivel de juego activo.
+        /// </summary>
+        public int Level { get; set; } = 1;
+
+        /// <summary>
+        /// Obtiene el puntaje actual del juego.
+        /// </summary>
+        public int Score { get; private set; } = 0;
+
+        /// <summary>
+        /// Obtiene la cantidad actual de líneas hechas en el juego.
+        /// </summary>
+        public int Lines { get; private set; }
+
+        /// <summary>
+        /// Obtiene o establece un valor que indica si el juego continúa.
+        /// </summary>
+        public bool KeepPlaying { get; set; } = true;
 
         #endregion
 
@@ -342,6 +420,13 @@ namespace TheXDS.CoreBlocks
             }
         }
 
+        /// <summary>
+        /// Ejecuta comprobaciones del puntaje actual, y aumenta el nivel de
+        /// ser necesario.
+        /// </summary>
+        /// <param name="lines">
+        /// Líneas completadas por el jugador en la acción actual.
+        /// </param>
         private void CheckScore(int lines)
         {
             PrintMessage(lines == 1 ? "1 Línea" : $"{lines} Líneas!", 8);
@@ -398,6 +483,115 @@ namespace TheXDS.CoreBlocks
             }
         }
 
+        /// <summary>
+        /// Calcula la posición más baja que puede ocupar la pieza activa en el
+        /// juego.
+        /// </summary>
+        /// <returns>
+        /// La posición lógica Y más maja que la pieza activa puede ocupar
+        /// actualmente.
+        /// </returns>
+        private int CalcBottom()
+        {
+            lock (_syncLock)
+            {
+                var ny = 0;
+                while (Fits(0, ++ny, 0) == true) ;
+                return _py + ny - 1;
+            }
+        }
+
+        /// <summary>
+        /// Muestra un mensaje que desaparecerá luego de 3000 ms al jugador.
+        /// </summary>
+        /// <param name="message">Mensaje a mostrar.</param>
+        /// <param name="line">Línea en la cual colocar el mensaje.</param>
+        private async void PrintMessage(string message, int line = 1)
+        {
+            lock (_syncLock)
+            {
+                Console.SetCursorPosition(0, _wellYOffset + line);
+                Console.WriteLine(message);
+            }
+            await Task.Delay(3000);
+            lock (_syncLock)
+            {
+                Console.SetCursorPosition(0, _wellYOffset + line);
+                Console.WriteLine(new string(' ', message.Length));
+            }
+        }
+
+        #endregion
+
+        #region Hilos de ejecución
+
+        /// <summary>
+        /// Hilo que maneja la entrada de controles del juego.
+        /// </summary>
+        private void HandleInput()
+        {
+            while (KeepPlaying)
+            {
+                if (_keyBindings.TryGetValue(Console.ReadKey(true).Key, out var action)) action.Invoke();                
+            }
+        }
+
+        /// <summary>
+        /// Hilo que controla la aparición de figuras en el juego.
+        /// </summary>
+        private async Task ShapeLoop()
+        {
+            _nextShape = (byte)_rnd.Next(Shapes.Length);
+            while (KeepPlaying)
+            {
+                SelectNextShape();
+                while (Fits(0, 1, 0) == true)
+                {
+                    UpdateShape(0, 1, 0);
+                    await Task.Delay(1000 / Level);
+                }
+                if (_py < 0) break;
+                _holdUsed = false;
+                TransformRotate(_shape, _px, _py, _r, SetWellBits);
+                CheckLines();
+            }
+            KeepPlaying = false;
+            PrintMessage("Fin del juego.");
+        }
+
+        #endregion
+
+        #region Acciones de control del juego
+
+        private void MoveLeft() => UpdateShape(-1, 0, 0);
+        private void MoveRight() => UpdateShape(1, 0, 0);
+        private void RotateCw() => UpdateShape(0, 0, 1);
+        private void RotateCcw() => UpdateShape(0, 0, -1);
+        private void SoftDrop() => UpdateShape(0, 1, 0);
+        private void HardDrop() => UpdateShape(0, CalcBottom() - _py, 0);
+        private void HoldCurrent()
+        {
+            if (_holdUsed) return;
+            _holdUsed = true;
+
+            ClearShape();
+            ClearShadow();
+
+            if (!_hold.HasValue)
+            {
+                _hold = _shape;
+                SelectNextShape();
+            }
+            else
+            {
+                ClearShape(_hold.Value, -6, 2, 0);
+                var tmphold = _shape;
+                SelectNextShape(_hold.Value);
+                _hold = tmphold;
+            }
+            DrawShape(_hold.Value, -6, 2, 0);
+        }
+
         #endregion
 
         /// <summary>
@@ -435,167 +629,65 @@ namespace TheXDS.CoreBlocks
             );
         }
 
+    }
 
-        #region Acciones de control del juego
 
-        private void MoveLeft() => UpdateShape(-1, 0, 0);
-        private void MoveRight() => UpdateShape(1, 0, 0);
-        private void RotateCw() => UpdateShape(0, 0, 1);
-        private void RotateCcw() => UpdateShape(0, 0, -1);
-        private void SoftDrop() => UpdateShape(0, 1, 0);
-        private void HardDrop() => UpdateShape(0, CalcBottom() - _py, 0);
-        private void HoldCurrent()
+    //https://devblogs.microsoft.com/pfxteam/cooperatively-pausing-async-methods/
+    public class PauseTokenSource
+    {
+        public bool IsPaused
         {
-            if (_holdUsed) return;
-            _holdUsed = true;
-
-            ClearShape();
-            ClearShadow();
-
-            if (!_hold.HasValue)
+            get => m_paused != null;
+            set
             {
-                _hold = _shape;
-                SelectNextShape();
-            }
-            else
-            {
-                ClearShape(_hold.Value, -6, 2, 0);
-                var tmphold = _shape;
-                SelectNextShape(_hold.Value);
-                _hold = tmphold;
-            }
-            DrawShape(_hold.Value, -6, 2, 0);
-        }
-
-        #endregion
-
-        /// <summary>
-        /// Hilo que maneja la entrada de controles del juego.
-        /// </summary>
-        private void HandleInput()
-        {
-            while (KeepPlaying)
-            {
-                if (_keyBindings.TryGetValue(Console.ReadKey(true).Key, out var action)) action.Invoke();                
-            }
-        }
-
-
-        /// <summary>
-        /// Calcula la posición más baja que puede ocupar la pieza activa en el
-        /// juego.
-        /// </summary>
-        /// <returns>
-        /// La posición lógica Y más maja que la pieza activa puede ocupar
-        /// actualmente.
-        /// </returns>
-        private int CalcBottom()
-        {
-            lock (_syncLock)
-            {
-                var ny = 0;
-                while (Fits(0, ++ny, 0) == true) ;
-                return _py + ny - 1;
-            }
-        }
-
-        /// <summary>
-        /// Hilo que controla la aparición de figuras en el juego.
-        /// </summary>
-        private async Task ShapeLoop()
-        {
-            _nextShape = (byte)_rnd.Next(Shapes.Length);
-            while (KeepPlaying)
-            {
-                SelectNextShape();
-                while (Fits(0, 1, 0) == true)
+                if (value)
                 {
-                    UpdateShape(0, 1, 0);
-                    await Task.Delay(1000 / Level);
+                    Interlocked.CompareExchange(ref m_paused, new TaskCompletionSource<bool>(), null);
                 }
-                if (_py < 0) break;
-                _holdUsed = false;
-                TransformRotate(_shape, _px, _py, _r, SetWellBits);
-                CheckLines();
+                else
+                {
+                    while (true)
+                    {
+                        var tcs = m_paused;
+                        if (tcs is null) return;
+                        if (Interlocked.CompareExchange(ref m_paused, null, tcs) == tcs)
+                        {
+                            tcs.SetResult(true);
+                            break;
+                        }
+                    }
+                }
             }
-            KeepPlaying = false;
-            PrintMessage("Fin del juego.");
+        }
+        public PauseToken Token => new PauseToken(this);
+
+        private volatile TaskCompletionSource<bool>? m_paused;
+
+        internal Task WaitWhilePausedAsync()
+        {
+            var cur = m_paused;
+            return cur != null ? cur.Task : Completed;
         }
 
+        private static readonly Task<bool> Completed = Task.FromResult(true);
+    }
 
-        /// <summary>
-        /// Rotación actual de la pieza.
-        /// </summary>
-        private byte _r = 0;
+    public struct PauseToken
+    {
+        private readonly PauseTokenSource? m_source;
 
-        /// <summary>
-        /// Posición X actual de la pieza.
-        /// </summary>
-        private int _px;
+        internal PauseToken(PauseTokenSource source)
+        { 
+            m_source = source;
+        }
 
-        /// <summary>
-        /// Posición Y actual de la pieza.
-        /// </summary>
-        private int _py;
+        public bool IsPaused => m_source?.IsPaused ?? false;
 
-        /// <summary>
-        /// Pieza activa.
-        /// </summary>
-        private byte _shape;
-
-        /// <summary>
-        /// Siguiente figura
-        /// </summary>
-        private byte _nextShape;
-
-        /// <summary>
-        /// Pieza almacenada en el Hold.
-        /// </summary>
-        private byte? _hold = null;
-
-        /// <summary>
-        /// Estado actual del Hold.
-        /// </summary>
-        private bool _holdUsed = false;
-
-        /// <summary>
-        /// Combo alcanzado.
-        /// </summary>
-        private int _combo;
-
-        /// <summary>
-        /// Obtiene o establece el nivel de juego activo.
-        /// </summary>
-        public int Level { get; set; } = 1;
-
-        /// <summary>
-        /// Obtiene el puntaje actual del juego.
-        /// </summary>
-        public int Score { get; private set; } = 0;
-
-        /// <summary>
-        /// Obtiene la cantidad actual de líneas hechas en el juego.
-        /// </summary>
-        public int Lines { get; private set; }
-
-        /// <summary>
-        /// Obtiene o establece un valor que indica si el juego continúa.
-        /// </summary>
-        public bool KeepPlaying { get; set; } = true;
-
-        private async void PrintMessage(string message, int line = 1)
+        public Task WaitWhilePausedAsync()
         {
-            lock (_syncLock)
-            {
-                Console.SetCursorPosition(0, _wellYOffset + line);
-                Console.WriteLine(message);
-            }
-            await Task.Delay(3000);
-            lock (_syncLock)
-            {
-                Console.SetCursorPosition(0, _wellYOffset + line);
-                Console.WriteLine(new string(' ', message.Length));
-            }
+            return IsPaused ?
+                m_source!.WaitWhilePausedAsync() :
+                Task.CompletedTask;
         }
     }
 }
