@@ -84,6 +84,7 @@ namespace TheXDS.CoreBlocks
         /// </summary>
         private readonly byte?[,] _well = new byte?[_wellWidth, _wellHeight];
 
+        private CancellationTokenSource ShapeBreaker;
         #endregion
 
         #region Métodos de dibujo básicos
@@ -249,9 +250,9 @@ namespace TheXDS.CoreBlocks
         /// <param name="relX">Nueva posición X relativa.</param>
         /// <param name="relY">Nueva posición Y relativa.</param>
         /// <param name="relR">Nueva rotación relativa.</param>
-        private void UpdateShape(int relX, int relY, int relR)
+        private bool UpdateShape(int relX, int relY, int relR)
         {
-            if (Fits(relX, relY, relR) != true) return;
+            if (Fits(relX, relY, relR) != true) return false;
             lock (_syncLock)
             {
                 ClearShadow();
@@ -262,6 +263,7 @@ namespace TheXDS.CoreBlocks
                 DrawShadow();
                 DrawShape();
             }
+            return true;
         }
 
         /// <summary>
@@ -440,10 +442,14 @@ namespace TheXDS.CoreBlocks
 
         private void MoveLeft() => UpdateShape(-1, 0, 0);
         private void MoveRight() => UpdateShape(1, 0, 0);
-        private void RotateCw() => UpdateShape(0, 0, 1);
-        private void RotateCcw() => UpdateShape(0, 0, -1);
+        private void RotateCw() => Rotate(1);
+        private void RotateCcw() => Rotate(-1);
         private void SoftDrop() => UpdateShape(0, 1, 0);
-        private void HardDrop() => UpdateShape(0, CalcBottom() - _py, 0);
+        private void HardDrop()
+        {
+            UpdateShape(0, CalcBottom() - _py, 0);
+            ShapeBreaker.Cancel();
+        }
         private void HoldCurrent()
         {
             if (_holdUsed) return;
@@ -466,7 +472,13 @@ namespace TheXDS.CoreBlocks
             }
             DrawShape(_hold.Value, -6, 2, 0);
         }
-
+        private void Rotate(int direction)
+        {
+            _ = UpdateShape(0, 0, direction) ||
+                UpdateShape(-1, 0, direction) || // Probar a la izquierda...
+                UpdateShape(1, 0, direction) ||  // Probar a la derecha...
+                UpdateShape(0, 1, direction);    // Finalmente, probar arriba...
+        }
         #endregion
 
         /// <summary>
@@ -508,10 +520,21 @@ namespace TheXDS.CoreBlocks
             while (KeepPlaying)
             {
                 SelectNextShape();
-                while (Fits(0, 1, 0) == true)
+                bool broken = false;
+                while (Fits(0, 1, 0) == true && !broken)
                 {
-                    UpdateShape(0, 1, 0);
-                    await Task.Delay(1000 / Level);
+                    using (ShapeBreaker = new CancellationTokenSource())
+                    {
+                        UpdateShape(0, 1, 0);
+
+                        /* Desafortunadamente, Task.Delay genera una excepción
+                         * de tipo TaskCancelledException cuando una tarea es
+                         * cancelada. Hacer lógica basada en excepciones es
+                         * anti-patrón, pero no hay muchas alternativas
+                         * elegantes en este caso. */
+                        try { await Task.Delay(1000 / Level, ShapeBreaker.Token); }
+                        catch { broken = true; }                        
+                    }                    
                 }
                 if (_py < 0) break;
                 _holdUsed = false;
