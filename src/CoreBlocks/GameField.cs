@@ -102,7 +102,8 @@ namespace TheXDS.CoreBlocks
         /// </summary>
         private readonly byte?[,] _well = new byte?[_wellWidth, _wellHeight];
 
-        private CancellationTokenSource ShapeBreaker;
+        private readonly PauseTokenSource _pauseSource = new PauseTokenSource();
+        private TaskCompletionSource<bool> _shapeBreaker = new TaskCompletionSource<bool>();
 
         /// <summary>
         /// Rotación actual de la pieza.
@@ -178,7 +179,7 @@ namespace TheXDS.CoreBlocks
                 for (byte k = 0; k < _wellHeight; k++)
                 {
                     if (!_well[j, k].HasValue) ClearBlock(j, k);
-                    else DrawBlock(_well[j, k].Value, j, k);
+                    else DrawBlock(_well[j, k]!.Value, j, k);
                 }
             }
         }
@@ -504,7 +505,6 @@ namespace TheXDS.CoreBlocks
             }
         }
 
-
         /// <summary>
         /// Muestra un mensaje que desaparecerá luego de 3000 ms al jugador.
         /// </summary>
@@ -524,6 +524,11 @@ namespace TheXDS.CoreBlocks
                 Console.WriteLine(new string(' ', message.Length));
             }
         }
+
+        /// <summary>
+        /// Intenta ejecutar una rotación en una dirección en particular.
+        /// </summary>
+        /// <param name="direction">Dirección de rotación.</param>
         private void Rotate(int direction)
         {
             _ = UpdateShape(0, 0, direction) ||
@@ -531,6 +536,7 @@ namespace TheXDS.CoreBlocks
                 UpdateShape(1, 0, direction) ||  // Probar a la derecha...
                 UpdateShape(0, 1, direction);    // Finalmente, probar arriba...
         }
+
         #endregion
 
         #region Hilos de ejecución
@@ -549,27 +555,21 @@ namespace TheXDS.CoreBlocks
         /// <summary>
         /// Hilo que controla la aparición de figuras en el juego.
         /// </summary>
-        private async Task ShapeLoop()
+        private async Task ShapeLoopAsync()
         {
             _nextShape = (byte)_rnd.Next(Shapes.Length);
             while (KeepPlaying)
             {
                 SelectNextShape();
-                bool broken = false;
-                while (Fits(0, 1, 0) == true && !broken)
+                while (Fits(0, 1, 0) == true)
                 {
-                    using (ShapeBreaker = new CancellationTokenSource())
+                    await _pauseSource.WaitWhilePausedAsync();
+                    UpdateShape(0, 1, 0);
+                    if (_shapeBreaker.Task == await Task.WhenAny(Task.Delay(1000 / Level), _shapeBreaker.Task))
                     {
-                        UpdateShape(0, 1, 0);
-
-                        /* Desafortunadamente, Task.Delay genera una excepción
-                         * de tipo TaskCancelledException cuando una tarea es
-                         * cancelada. Hacer lógica basada en excepciones es
-                         * anti-patrón, pero no hay muchas alternativas
-                         * elegantes en este caso. */
-                        try { await Task.Delay(1000 / Level, ShapeBreaker.Token); }
-                        catch { broken = true; }                        
-                    }                    
+                        _shapeBreaker = new TaskCompletionSource<bool>();
+                        continue;
+                    }                 
                 }
                 if (_py < 0) break;
                 _holdUsed = false;
@@ -586,10 +586,15 @@ namespace TheXDS.CoreBlocks
 
         private void MoveLeft() => UpdateShape(-1, 0, 0);
         private void MoveRight() => UpdateShape(1, 0, 0);
-        private void RotateCw() => UpdateShape(0, 0, 1);
-        private void RotateCcw() => UpdateShape(0, 0, -1);
+        private void RotateCw() => Rotate(1);
+        private void RotateCcw() => Rotate(-1);
         private void SoftDrop() => UpdateShape(0, 1, 0);
-        private void HardDrop() => UpdateShape(0, CalcBottom() - _py, 0);
+        private void HardDrop()
+        {
+            UpdateShape(0, CalcBottom() - _py, 0);
+            _shapeBreaker.SetResult(true);
+        }
+
         private void HoldCurrent()
         {
             if (_holdUsed) return;
@@ -611,6 +616,11 @@ namespace TheXDS.CoreBlocks
                 _hold = tmphold;
             }
             DrawShape(_hold.Value, -6, 2, 0);
+            _shapeBreaker.SetResult(true);
+        }
+        private void TogglePause()
+        {
+            _pauseSource.IsPaused = !_pauseSource.IsPaused;
         }
 
         #endregion
@@ -643,13 +653,14 @@ namespace TheXDS.CoreBlocks
             _keyBindings.Add(ConsoleKey.NumPad2, HardDrop);
             _keyBindings.Add(ConsoleKey.C, HoldCurrent);
             _keyBindings.Add(ConsoleKey.NumPad0, HoldCurrent);
+            _keyBindings.Add(ConsoleKey.Pause, TogglePause);
+            _keyBindings.Add(ConsoleKey.P, TogglePause);
 
             return Task.WhenAll(
-                ShapeLoop(),
+                ShapeLoopAsync(),
                 Task.Run(HandleInput)
             );
         }
-
     }
 
 
@@ -680,6 +691,7 @@ namespace TheXDS.CoreBlocks
                 }
             }
         }
+
         public PauseToken Token => new PauseToken(this);
 
         private volatile TaskCompletionSource<bool>? m_paused;
