@@ -31,13 +31,31 @@ using System.Collections.Generic;
 
 namespace TheXDS.CoreBlocks
 {
+    /// <summary>
+    /// Define una instancia del área de juego.
+    /// </summary>
     internal class GameField
     {
         #region Configuración
 
+        /// <summary>
+        /// Define el ancho del área de juego.
+        /// </summary>
         private const int _wellWidth = 10;
+
+        /// <summary>
+        /// Define el alto del área de juego.
+        /// </summary>
         private const int _wellHeight = 24;
+
+        /// <summary>
+        /// Offset posicional X del área de juego.
+        /// </summary>
         private const int _wellXOffset = 12;
+
+        /// <summary>
+        /// Offset posicional Y del área de juego.
+        /// </summary>
         private const int _wellYOffset = 0;
 
         #endregion
@@ -85,6 +103,67 @@ namespace TheXDS.CoreBlocks
         private readonly byte?[,] _well = new byte?[_wellWidth, _wellHeight];
 
         private CancellationTokenSource ShapeBreaker;
+
+        /// <summary>
+        /// Rotación actual de la pieza.
+        /// </summary>
+        private byte _r = 0;
+
+        /// <summary>
+        /// Posición X actual de la pieza.
+        /// </summary>
+        private int _px;
+
+        /// <summary>
+        /// Posición Y actual de la pieza.
+        /// </summary>
+        private int _py;
+
+        /// <summary>
+        /// Pieza activa.
+        /// </summary>
+        private byte _shape;
+
+        /// <summary>
+        /// Siguiente figura
+        /// </summary>
+        private byte _nextShape;
+
+        /// <summary>
+        /// Pieza almacenada en el Hold.
+        /// </summary>
+        private byte? _hold = null;
+
+        /// <summary>
+        /// Estado actual del Hold.
+        /// </summary>
+        private bool _holdUsed = false;
+
+        /// <summary>
+        /// Combo alcanzado.
+        /// </summary>
+        private int _combo;
+
+        /// <summary>
+        /// Obtiene o establece el nivel de juego activo.
+        /// </summary>
+        public int Level { get; set; } = 1;
+
+        /// <summary>
+        /// Obtiene el puntaje actual del juego.
+        /// </summary>
+        public int Score { get; private set; } = 0;
+
+        /// <summary>
+        /// Obtiene la cantidad actual de líneas hechas en el juego.
+        /// </summary>
+        public int Lines { get; private set; }
+
+        /// <summary>
+        /// Obtiene o establece un valor que indica si el juego continúa.
+        /// </summary>
+        public bool KeepPlaying { get; set; } = true;
+
         #endregion
 
         #region Métodos de dibujo básicos
@@ -344,6 +423,13 @@ namespace TheXDS.CoreBlocks
             }
         }
 
+        /// <summary>
+        /// Ejecuta comprobaciones del puntaje actual, y aumenta el nivel de
+        /// ser necesario.
+        /// </summary>
+        /// <param name="lines">
+        /// Líneas completadas por el jugador en la acción actual.
+        /// </param>
         private void CheckScore(int lines)
         {
             PrintMessage(lines == 1 ? "1 Línea" : $"{lines} Líneas!", 8);
@@ -400,99 +486,6 @@ namespace TheXDS.CoreBlocks
             }
         }
 
-        #endregion
-
-        /// <summary>
-        /// Punto de entrada principal del ciclo del juego.
-        /// </summary>
-        /// <returns>
-        /// Una tarea que finaliza cuando el jugador pierde o se retira.
-        /// </returns>
-        public Task PlayAsync()
-        {
-            DrawUI();
-
-            _keyBindings.Add(ConsoleKey.LeftArrow, MoveLeft);
-            _keyBindings.Add(ConsoleKey.A, MoveLeft);
-            _keyBindings.Add(ConsoleKey.NumPad4, MoveLeft);
-            _keyBindings.Add(ConsoleKey.RightArrow, MoveRight);
-            _keyBindings.Add(ConsoleKey.D, MoveRight);
-            _keyBindings.Add(ConsoleKey.NumPad6, MoveRight);
-            _keyBindings.Add(ConsoleKey.UpArrow, RotateCw);
-            _keyBindings.Add(ConsoleKey.W, RotateCw);
-            _keyBindings.Add(ConsoleKey.NumPad9, RotateCw);
-            _keyBindings.Add(ConsoleKey.NumPad8, RotateCw);
-            _keyBindings.Add(ConsoleKey.NumPad7, RotateCcw);
-            _keyBindings.Add(ConsoleKey.DownArrow, SoftDrop);
-            _keyBindings.Add(ConsoleKey.S, SoftDrop);
-            _keyBindings.Add(ConsoleKey.NumPad5, SoftDrop);
-            _keyBindings.Add(ConsoleKey.Spacebar, HardDrop);
-            _keyBindings.Add(ConsoleKey.NumPad2, HardDrop);
-            _keyBindings.Add(ConsoleKey.C, HoldCurrent);
-            _keyBindings.Add(ConsoleKey.NumPad0, HoldCurrent);
-
-            return Task.WhenAll(
-                ShapeLoop(),
-                Task.Run(HandleInput)
-            );
-        }
-
-
-        #region Acciones de control del juego
-
-        private void MoveLeft() => UpdateShape(-1, 0, 0);
-        private void MoveRight() => UpdateShape(1, 0, 0);
-        private void RotateCw() => Rotate(1);
-        private void RotateCcw() => Rotate(-1);
-        private void SoftDrop() => UpdateShape(0, 1, 0);
-        private void HardDrop()
-        {
-            UpdateShape(0, CalcBottom() - _py, 0);
-            ShapeBreaker.Cancel();
-        }
-        private void HoldCurrent()
-        {
-            if (_holdUsed) return;
-            _holdUsed = true;
-
-            ClearShape();
-            ClearShadow();
-
-            if (!_hold.HasValue)
-            {
-                _hold = _shape;
-                SelectNextShape();
-            }
-            else
-            {
-                ClearShape(_hold.Value, -6, 2, 0);
-                var tmphold = _shape;
-                SelectNextShape(_hold.Value);
-                _hold = tmphold;
-            }
-            DrawShape(_hold.Value, -6, 2, 0);
-        }
-        private void Rotate(int direction)
-        {
-            _ = UpdateShape(0, 0, direction) ||
-                UpdateShape(-1, 0, direction) || // Probar a la izquierda...
-                UpdateShape(1, 0, direction) ||  // Probar a la derecha...
-                UpdateShape(0, 1, direction);    // Finalmente, probar arriba...
-        }
-        #endregion
-
-        /// <summary>
-        /// Hilo que maneja la entrada de controles del juego.
-        /// </summary>
-        private void HandleInput()
-        {
-            while (KeepPlaying)
-            {
-                if (_keyBindings.TryGetValue(Console.ReadKey(true).Key, out var action)) action.Invoke();                
-            }
-        }
-
-
         /// <summary>
         /// Calcula la posición más baja que puede ocupar la pieza activa en el
         /// juego.
@@ -508,6 +501,48 @@ namespace TheXDS.CoreBlocks
                 var ny = 0;
                 while (Fits(0, ++ny, 0) == true) ;
                 return _py + ny - 1;
+            }
+        }
+
+
+        /// <summary>
+        /// Muestra un mensaje que desaparecerá luego de 3000 ms al jugador.
+        /// </summary>
+        /// <param name="message">Mensaje a mostrar.</param>
+        /// <param name="line">Línea en la cual colocar el mensaje.</param>
+        private async void PrintMessage(string message, int line = 1)
+        {
+            lock (_syncLock)
+            {
+                Console.SetCursorPosition(0, _wellYOffset + line);
+                Console.WriteLine(message);
+            }
+            await Task.Delay(3000);
+            lock (_syncLock)
+            {
+                Console.SetCursorPosition(0, _wellYOffset + line);
+                Console.WriteLine(new string(' ', message.Length));
+            }
+        }
+        private void Rotate(int direction)
+        {
+            _ = UpdateShape(0, 0, direction) ||
+                UpdateShape(-1, 0, direction) || // Probar a la izquierda...
+                UpdateShape(1, 0, direction) ||  // Probar a la derecha...
+                UpdateShape(0, 1, direction);    // Finalmente, probar arriba...
+        }
+        #endregion
+
+        #region Hilos de ejecución
+
+        /// <summary>
+        /// Hilo que maneja la entrada de controles del juego.
+        /// </summary>
+        private void HandleInput()
+        {
+            while (KeepPlaying)
+            {
+                if (_keyBindings.TryGetValue(Console.ReadKey(true).Key, out var action)) action.Invoke();                
             }
         }
 
@@ -545,80 +580,135 @@ namespace TheXDS.CoreBlocks
             PrintMessage("Fin del juego.");
         }
 
+        #endregion
 
-        /// <summary>
-        /// Rotación actual de la pieza.
-        /// </summary>
-        private byte _r = 0;
+        #region Acciones de control del juego
 
-        /// <summary>
-        /// Posición X actual de la pieza.
-        /// </summary>
-        private int _px;
-
-        /// <summary>
-        /// Posición Y actual de la pieza.
-        /// </summary>
-        private int _py;
-
-        /// <summary>
-        /// Pieza activa.
-        /// </summary>
-        private byte _shape;
-
-        /// <summary>
-        /// Siguiente figura
-        /// </summary>
-        private byte _nextShape;
-
-        /// <summary>
-        /// Pieza almacenada en el Hold.
-        /// </summary>
-        private byte? _hold = null;
-
-        /// <summary>
-        /// Estado actual del Hold.
-        /// </summary>
-        private bool _holdUsed = false;
-
-        /// <summary>
-        /// Combo alcanzado.
-        /// </summary>
-        private int _combo;
-
-        /// <summary>
-        /// Obtiene o establece el nivel de juego activo.
-        /// </summary>
-        public int Level { get; set; } = 1;
-
-        /// <summary>
-        /// Obtiene el puntaje actual del juego.
-        /// </summary>
-        public int Score { get; private set; } = 0;
-
-        /// <summary>
-        /// Obtiene la cantidad actual de líneas hechas en el juego.
-        /// </summary>
-        public int Lines { get; private set; }
-
-        /// <summary>
-        /// Obtiene o establece un valor que indica si el juego continúa.
-        /// </summary>
-        public bool KeepPlaying { get; set; } = true;
-
-        private async void PrintMessage(string message, int line = 1)
+        private void MoveLeft() => UpdateShape(-1, 0, 0);
+        private void MoveRight() => UpdateShape(1, 0, 0);
+        private void RotateCw() => UpdateShape(0, 0, 1);
+        private void RotateCcw() => UpdateShape(0, 0, -1);
+        private void SoftDrop() => UpdateShape(0, 1, 0);
+        private void HardDrop() => UpdateShape(0, CalcBottom() - _py, 0);
+        private void HoldCurrent()
         {
-            lock (_syncLock)
+            if (_holdUsed) return;
+            _holdUsed = true;
+
+            ClearShape();
+            ClearShadow();
+
+            if (!_hold.HasValue)
             {
-                Console.SetCursorPosition(0, _wellYOffset + line);
-                Console.WriteLine(message);
+                _hold = _shape;
+                SelectNextShape();
             }
-            await Task.Delay(3000);
-            lock (_syncLock)
+            else
             {
-                Console.SetCursorPosition(0, _wellYOffset + line);
-                Console.WriteLine(new string(' ', message.Length));
+                ClearShape(_hold.Value, -6, 2, 0);
+                var tmphold = _shape;
+                SelectNextShape(_hold.Value);
+                _hold = tmphold;
             }
+            DrawShape(_hold.Value, -6, 2, 0);
+        }
+
+        #endregion
+
+        /// <summary>
+        /// Punto de entrada principal del ciclo del juego.
+        /// </summary>
+        /// <returns>
+        /// Una tarea que finaliza cuando el jugador pierde o se retira.
+        /// </returns>
+        public Task PlayAsync()
+        {
+            DrawUI();
+
+            _keyBindings.Add(ConsoleKey.LeftArrow, MoveLeft);
+            _keyBindings.Add(ConsoleKey.A, MoveLeft);
+            _keyBindings.Add(ConsoleKey.NumPad4, MoveLeft);
+            _keyBindings.Add(ConsoleKey.RightArrow, MoveRight);
+            _keyBindings.Add(ConsoleKey.D, MoveRight);
+            _keyBindings.Add(ConsoleKey.NumPad6, MoveRight);
+            _keyBindings.Add(ConsoleKey.UpArrow, RotateCw);
+            _keyBindings.Add(ConsoleKey.W, RotateCw);
+            _keyBindings.Add(ConsoleKey.NumPad9, RotateCw);
+            _keyBindings.Add(ConsoleKey.NumPad8, RotateCw);
+            _keyBindings.Add(ConsoleKey.NumPad7, RotateCcw);
+            _keyBindings.Add(ConsoleKey.DownArrow, SoftDrop);
+            _keyBindings.Add(ConsoleKey.S, SoftDrop);
+            _keyBindings.Add(ConsoleKey.NumPad5, SoftDrop);
+            _keyBindings.Add(ConsoleKey.Spacebar, HardDrop);
+            _keyBindings.Add(ConsoleKey.NumPad2, HardDrop);
+            _keyBindings.Add(ConsoleKey.C, HoldCurrent);
+            _keyBindings.Add(ConsoleKey.NumPad0, HoldCurrent);
+
+            return Task.WhenAll(
+                ShapeLoop(),
+                Task.Run(HandleInput)
+            );
+        }
+
+    }
+
+
+    //https://devblogs.microsoft.com/pfxteam/cooperatively-pausing-async-methods/
+    public class PauseTokenSource
+    {
+        public bool IsPaused
+        {
+            get => m_paused != null;
+            set
+            {
+                if (value)
+                {
+                    Interlocked.CompareExchange(ref m_paused, new TaskCompletionSource<bool>(), null);
+                }
+                else
+                {
+                    while (true)
+                    {
+                        var tcs = m_paused;
+                        if (tcs is null) return;
+                        if (Interlocked.CompareExchange(ref m_paused, null, tcs) == tcs)
+                        {
+                            tcs.SetResult(true);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        public PauseToken Token => new PauseToken(this);
+
+        private volatile TaskCompletionSource<bool>? m_paused;
+
+        internal Task WaitWhilePausedAsync()
+        {
+            var cur = m_paused;
+            return cur != null ? cur.Task : Completed;
+        }
+
+        private static readonly Task<bool> Completed = Task.FromResult(true);
+    }
+
+    public struct PauseToken
+    {
+        private readonly PauseTokenSource? m_source;
+
+        internal PauseToken(PauseTokenSource source)
+        { 
+            m_source = source;
+        }
+
+        public bool IsPaused => m_source?.IsPaused ?? false;
+
+        public Task WaitWhilePausedAsync()
+        {
+            return IsPaused ?
+                m_source!.WaitWhilePausedAsync() :
+                Task.CompletedTask;
         }
     }
 }
