@@ -102,7 +102,15 @@ namespace TheXDS.CoreBlocks
         /// </summary>
         private readonly byte?[,] _well = new byte?[_wellWidth, _wellHeight];
 
+        /// <summary>
+        /// Tóken de control de pausa del juego.
+        /// </summary>
         private readonly PauseTokenSource _pauseSource = new PauseTokenSource();
+
+        /// <summary>
+        /// Interruptor del ciclo principal de figuras. Permite detener el
+        /// tiempo de espera del nivel para tomar acciones inmediatas.
+        /// </summary>
         private TaskCompletionSource<bool> _shapeBreaker = new TaskCompletionSource<bool>();
 
         /// <summary>
@@ -185,6 +193,20 @@ namespace TheXDS.CoreBlocks
         }
 
         /// <summary>
+        /// Borra el área de juego.
+        /// </summary>
+        private void ClearWell()
+        {
+            for (byte j = 0; j < _wellWidth; j++)
+            {
+                for (byte k = 0; k < _wellHeight; k++)
+                {
+                    ClearBlock(j, k);
+                }
+            }
+        }
+
+        /// <summary>
         /// Dibuja la interfaz gráfica del juego.
         /// </summary>
         private void DrawUI()
@@ -232,16 +254,31 @@ namespace TheXDS.CoreBlocks
             Console.Write("  ");
         }
 
+        /// <summary>
+        /// Dibuja la figura activa en su posición actual.
+        /// </summary>
         private void DrawShape()
         {
             DrawShape(_shape, _px, _py, _r);
         }
 
+        /// <summary>
+        /// Dibuja una figura especificada en las coordenadas.
+        /// </summary>
+        /// <param name="shape">Figura a dibujar.</param>
+        /// <param name="x">Coordenada X en la cual dibujar la figura.</param>
+        /// <param name="y">Coordenada Y en la cual dibujar la figura.</param>
+        /// <param name="rotation">
+        /// Valor de rotación con el cual transformar la figura para dibujarla.
+        /// </param>
         private void DrawShape(in byte shape, in int x, in int y, in byte rotation)
         {
             TransformRotate(shape, x, y, rotation, DrawBlock);
         }
 
+        /// <summary>
+        /// Dibuja la sombra de la figura actual.
+        /// </summary>
         private void DrawShadow()
         {
             var bottom = CalcBottom();
@@ -251,16 +288,33 @@ namespace TheXDS.CoreBlocks
             }
         }
 
+        /// <summary>
+        /// Borra la figura activa de la pantalla.
+        /// </summary>
         private void ClearShape()
         {
             ClearShape(_shape, _px, _py, _r);
         }
 
+        /// <summary>
+        /// Borra la figura dibujada previamente en las coordenadas y con la
+        /// transformación de rotación especificadas.
+        /// </summary>
+        /// <param name="shape">Figura a borrar.</param>
+        /// <param name="x">Coordenada X en la cual borrar la figura.</param>
+        /// <param name="y">Coordenada Y en la cual borrar la figura.</param>
+        /// <param name="rotation">
+        /// Valor que indica el valor de rotación con el cual se dibujó la
+        /// figura a borrar.
+        /// </param>
         private void ClearShape(in byte shape, in int x, in int y, byte rotation)
         {
             TransformRotate(shape, x, y, rotation, (_, px, py) => ClearBlock(px, py));
         }
 
+        /// <summary>
+        /// Borra la sombra de la figura activa.
+        /// </summary>
         private void ClearShadow()
         {
             var bottom = CalcBottom();
@@ -379,11 +433,6 @@ namespace TheXDS.CoreBlocks
         private void CheckLines()
         {
             var lines = 0;
-
-            /* Speedup: El ciclo comprueba desde abajo del área de juego porque
-             * es más probable que se hagan líneas en esa zona. */
-            //for (var j = _wellHeight-1; j >= 0; j--)
-
             for (var j = 0; j < _wellHeight; j++)
             {
                 var k = 0;
@@ -405,10 +454,6 @@ namespace TheXDS.CoreBlocks
                     {
                         _well[k, 0] = null;
                     }
-
-                    /* Speedup: en la implementación actual, no debería ser
-                     * posible hacer más de 4 líneas a la vez. */
-                    //if (lines == 4) break;
                 }
             }
             if (lines > 0)
@@ -620,7 +665,20 @@ namespace TheXDS.CoreBlocks
         }
         private void TogglePause()
         {
-            _pauseSource.IsPaused = !_pauseSource.IsPaused;
+            if (_pauseSource.IsPaused)
+            {
+                DrawWell();
+                _pauseSource.IsPaused = false;
+            }
+            else
+            {
+                _pauseSource.IsPaused = true;
+                ClearWell();
+                const string pauseMsg = "Juego en pausa";
+                Console.SetCursorPosition(_wellXOffset + 4, _wellYOffset + (_wellHeight / 2));
+                Console.Write(pauseMsg);
+            }
+            
         }
 
         #endregion
