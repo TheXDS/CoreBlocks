@@ -37,6 +37,7 @@ namespace TheXDS.CoreBlocks
             Console.CursorVisible = false;
             var g = new GameField();
             await g.PlayAsync();
+            await Task.Delay(5000);
             Console.Clear();
             Console.CursorVisible = true;
         }

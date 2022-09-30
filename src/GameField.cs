@@ -28,6 +28,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace TheXDS.CoreBlocks
 {
@@ -37,6 +38,28 @@ namespace TheXDS.CoreBlocks
     internal class GameField
     {
         #region Configuración
+
+        /// <summary>
+        /// Define la cantidad de líneas necesarias para subir de nivel.
+        /// </summary>
+        private const int _linesPerLevel = 20;
+
+        /// <summary>
+        /// Define la cantidad de puntos otorgados por línea completada.
+        /// </summary>
+        private const int _pointsPerLine = 100;
+
+        /// <summary>
+        /// Define la cantidad de puntos otorgados por completar una maniobra
+        /// de T-Spin.
+        /// </summary>
+        private const int _pointsPerTSpin = 500;
+
+        /// <summary>
+        /// Define la cantidad de puntos por línea completada al limpiar
+        /// completamente el área de juego.
+        /// </summary>
+        private const int _pointsPerBravo = 1000;
 
         /// <summary>
         /// Define el ancho del área de juego.
@@ -58,6 +81,20 @@ namespace TheXDS.CoreBlocks
         /// </summary>
         private const int _wellYOffset = 0;
 
+        /// <summary>
+        /// Define la colección de figuras disponibles en el juego.
+        /// </summary>
+        private static readonly byte[] Shapes =
+        {
+            0b_1100_1100, // O, 0
+            0b_1111_0000, // I, 1
+            0b_0100_0111, // J, 2
+            0b_0010_1110, // L, 3
+            0b_1100_0110, // Z, 4
+            0b_0110_1100, // S, 5
+            0b_0100_1110, // T, 6
+        };
+
         #endregion
 
         #region Objetos misceláneos
@@ -65,37 +102,23 @@ namespace TheXDS.CoreBlocks
         /// <summary>
         /// Generador de números aleatorios del juego.
         /// </summary>
-        private static readonly Random _rnd = new Random();
+        private static readonly Random _rnd = new();
 
         /// <summary>
         /// Ayuda a sincronizar los hilos de dibujado y tareas que deben
-        /// ejecutarse como una transacción única.
+        /// ejecutarse como una unidad de trabajo de principio a fin.
         /// </summary>
-        private static readonly object _syncLock = new object();
+        private static readonly object _syncLock = new();
 
         /// <summary>
         /// Contiene una colección de las teclas configuradas para controlar el
         /// juego.
         /// </summary>
-        private readonly Dictionary<ConsoleKey, Action> _keyBindings = new Dictionary<ConsoleKey, Action>();
+        private readonly Dictionary<ConsoleKey, Action> _keyBindings = new();
 
         #endregion
 
         #region Objetos de estado del juego
-
-        /// <summary>
-        /// Define la colección de figuras disponibles en el juego.
-        /// </summary>
-        private static readonly byte[] Shapes =
-        {
-            0b_1100_1100, // O
-            0b_1111_0000, // I
-            0b_0100_0111, // J
-            0b_0010_1110, // L
-            0b_1100_0110, // Z
-            0b_0110_1100, // S
-            0b_0100_1110, // T
-        };
 
         /// <summary>
         /// Contiene el área de juego activa.
@@ -103,28 +126,28 @@ namespace TheXDS.CoreBlocks
         private readonly byte?[,] _well = new byte?[_wellWidth, _wellHeight];
 
         /// <summary>
-        /// Tóken de control de pausa del juego.
+        /// Token de control de pausa del juego.
         /// </summary>
-        private readonly PauseTokenSource _pauseSource = new PauseTokenSource();
+        private readonly PauseTokenSource _pauseSource = new();
 
         /// <summary>
         /// Interruptor del ciclo principal de figuras. Permite detener el
         /// tiempo de espera del nivel para tomar acciones inmediatas.
         /// </summary>
-        private TaskCompletionSource<bool> _shapeBreaker = new TaskCompletionSource<bool>();
+        private TaskCompletionSource<bool> _shapeBreaker = new();
 
         /// <summary>
-        /// Rotación actual de la pieza.
+        /// Rotación actual de la pieza activa.
         /// </summary>
         private byte _r = 0;
 
         /// <summary>
-        /// Posición X actual de la pieza.
+        /// Posición X actual de la pieza activa.
         /// </summary>
         private int _px;
 
         /// <summary>
-        /// Posición Y actual de la pieza.
+        /// Posición Y actual de la pieza activa.
         /// </summary>
         private int _py;
 
@@ -178,24 +201,9 @@ namespace TheXDS.CoreBlocks
         #region Métodos de dibujo básicos
 
         /// <summary>
-        /// Dibuja toda el área de juego.
-        /// </summary>
-        private void DrawWell()
-        {
-            for (byte j = 0; j < _wellWidth; j++)
-            {
-                for (byte k = 0; k < _wellHeight; k++)
-                {
-                    if (!_well[j, k].HasValue) ClearBlock(j, k);
-                    else DrawBlock(_well[j, k]!.Value, j, k);
-                }
-            }
-        }
-
-        /// <summary>
         /// Borra el área de juego.
         /// </summary>
-        private void ClearWell()
+        private static void ClearWell()
         {
             for (byte j = 0; j < _wellWidth; j++)
             {
@@ -209,7 +217,7 @@ namespace TheXDS.CoreBlocks
         /// <summary>
         /// Dibuja la interfaz gráfica del juego.
         /// </summary>
-        private void DrawUI()
+        private static void DrawUI()
         {
             Console.SetCursorPosition(_wellXOffset, _wellYOffset);
             Console.Write($"+{new string('-', _wellWidth * 2)}+");
@@ -229,6 +237,49 @@ namespace TheXDS.CoreBlocks
         }
 
         /// <summary>
+        /// Borra un bloque en las coordenadas correspondientes del juego.
+        /// </summary>
+        /// <param name="x">Posición X del bloque.</param>
+        /// <param name="y">Posición Y del bloque.</param>
+        private static void ClearBlock(in int x, in int y)
+        {
+            Console.SetCursorPosition(_wellXOffset + (x * 2) + 1, _wellYOffset + y + 1);
+            Console.ResetColor();
+            Console.Write("  ");
+        }
+
+        /// <summary>
+        /// Borra la figura dibujada previamente en las coordenadas y con la
+        /// transformación de rotación especificadas.
+        /// </summary>
+        /// <param name="shape">Figura a borrar.</param>
+        /// <param name="x">Coordenada X en la cual borrar la figura.</param>
+        /// <param name="y">Coordenada Y en la cual borrar la figura.</param>
+        /// <param name="rotation">
+        /// Valor que indica el valor de rotación con el cual se dibujó la
+        /// figura a borrar.
+        /// </param>
+        private static void ClearShape(in byte shape, in int x, in int y, in byte rotation)
+        {
+            TransformRotate(shape, x, y, rotation, (_, px, py) => ClearBlock(px, py));
+        }
+
+        /// <summary>
+        /// Dibuja toda el área de juego.
+        /// </summary>
+        private void DrawWell()
+        {
+            for (byte j = 0; j < _wellWidth; j++)
+            {
+                for (byte k = 0; k < _wellHeight; k++)
+                {
+                    if (!_well[j, k].HasValue) ClearBlock(j, k);
+                    else DrawBlock(_well[j, k]!.Value, j, k);
+                }
+            }
+        }
+
+        /// <summary>
         /// Dibuja un bloque en las coordenadas correspondientes del juego.
         /// </summary>
         /// <param name="block">Color del bloque a dibujar.</param>
@@ -240,18 +291,6 @@ namespace TheXDS.CoreBlocks
             Console.BackgroundColor = (ConsoleColor)((block + 1) % 16);
             Console.Write("[]");
             Console.ResetColor();
-        }
-
-        /// <summary>
-        /// Borra un bloque en las coordenadas correspondientes del juego.
-        /// </summary>
-        /// <param name="x">Posición X del bloque.</param>
-        /// <param name="y">Posición Y del bloque.</param>
-        private void ClearBlock(int x, int y)
-        {
-            Console.SetCursorPosition(_wellXOffset + (x * 2) + 1, _wellYOffset + y + 1);
-            Console.ResetColor();
-            Console.Write("  ");
         }
 
         /// <summary>
@@ -297,22 +336,6 @@ namespace TheXDS.CoreBlocks
         }
 
         /// <summary>
-        /// Borra la figura dibujada previamente en las coordenadas y con la
-        /// transformación de rotación especificadas.
-        /// </summary>
-        /// <param name="shape">Figura a borrar.</param>
-        /// <param name="x">Coordenada X en la cual borrar la figura.</param>
-        /// <param name="y">Coordenada Y en la cual borrar la figura.</param>
-        /// <param name="rotation">
-        /// Valor que indica el valor de rotación con el cual se dibujó la
-        /// figura a borrar.
-        /// </param>
-        private void ClearShape(in byte shape, in int x, in int y, byte rotation)
-        {
-            TransformRotate(shape, x, y, rotation, (_, px, py) => ClearBlock(px, py));
-        }
-
-        /// <summary>
         /// Borra la sombra de la figura activa.
         /// </summary>
         private void ClearShadow()
@@ -321,6 +344,46 @@ namespace TheXDS.CoreBlocks
             if (bottom > _py)
             {
                 TransformRotate(_shape, _px, bottom, _r, (_, px, py) => ClearBlock(px, py));
+            }
+        }
+
+        /// <summary>
+        /// Muestra un mensaje que desaparecerá luego de 3000 ms al jugador.
+        /// </summary>
+        /// <param name="message">Mensaje a mostrar.</param>
+        /// <param name="line">Línea en la cual colocar el mensaje.</param>
+        private static async void PrintMessage(string message, int line = 1)
+        {
+            lock (_syncLock)
+            {
+                Console.SetCursorPosition(0, _wellYOffset + line);
+                Console.WriteLine(message);
+            }
+            await Task.Delay(3000);
+            lock (_syncLock)
+            {
+                Console.SetCursorPosition(0, _wellYOffset + line);
+                Console.WriteLine(new string(' ', message.Length));
+            }
+        }
+
+        /// <summary>
+        /// Muestra un mensaje directamente sobre el área de juego.
+        /// </summary>
+        /// <param name="message"></param>
+        private static void PrintMainMessage(in string message)
+        {
+            var lines = message.Split('\n');
+            var width = _wellXOffset + (_wellWidth / 2) - 1;
+            var height = _wellYOffset + (_wellHeight / 2) - (lines.Length / 2);
+
+            lock (_syncLock)
+            {
+                foreach (var j in lines)
+                {
+                    Console.SetCursorPosition(width + ((lines.Max(p => p.Length) - j.Length) / 2), ++height);
+                    Console.Write(j);
+                }
             }
         }
 
@@ -339,7 +402,7 @@ namespace TheXDS.CoreBlocks
         /// <param name="action">
         /// Acción a ejecutar sobre los bits de la figura.
         /// </param>
-        private void TransformRotate(in byte shape, in int x, in int y, in byte r, Action<int, int, int> action)
+        private static void TransformRotate(in byte shape, in int x, in int y, in byte r, Action<int, int, int> action)
         {
             TransformRotate(shape, x, y, r, (shape, nx, ny) => { action(shape, nx, ny); return true; });
         }
@@ -358,9 +421,21 @@ namespace TheXDS.CoreBlocks
         /// continuar, <see langword="false"/> para detener inmediatamente la
         /// iteración.
         /// </param>
-        private void TransformRotate(in byte shape, in int x, in int y, in byte r, Func<int, int, int, bool> function)
+        private static void TransformRotate(in byte shape, int x, int y, in byte r, Func<int, int, int, bool> function)
         {
             var shapeData = Shapes[shape];
+
+            // Caso especial para pieza T
+            if (shape == 6)
+            {
+                switch (r)
+                {
+                    case 1: x += 1; break;
+                    case 2: y += 1; break;
+                    case 3: y -= 1; break;
+                }
+            }
+
             for (byte j = 0; j < 8; j++)
             {
                 if (((shapeData << j) & 128) != 0)
@@ -384,7 +459,7 @@ namespace TheXDS.CoreBlocks
         /// <param name="relX">Nueva posición X relativa.</param>
         /// <param name="relY">Nueva posición Y relativa.</param>
         /// <param name="relR">Nueva rotación relativa.</param>
-        private bool UpdateShape(int relX, int relY, int relR)
+        private bool UpdateShape(in int relX, in int relY, in int relR)
         {
             if (Fits(relX, relY, relR) != true) return false;
             lock (_syncLock)
@@ -407,7 +482,7 @@ namespace TheXDS.CoreBlocks
         /// <param name="newShape">
         /// Nueva figura a establecer como la activa.
         /// </param>
-        private void SelectNextShape(byte newShape)
+        private void SelectNextShape(in byte newShape)
         {
             _shape = newShape;
             _r = 0;
@@ -426,13 +501,34 @@ namespace TheXDS.CoreBlocks
             TransformRotate(_nextShape, _wellWidth + 2, 2, 0, DrawBlock);
         }
 
+        private bool CheckTSpin()
+        {
+            return _r switch
+            {
+                0 => (_well[_px, _py].HasValue ^ _well[_px + 2, _py].HasValue) && _well[_px, _py + 2].HasValue && _well[_px + 1, _py + 2].HasValue && _well[_px + 2, _py + 2].HasValue,
+                2 => (_well[_px, _py].HasValue ^ _well[_px + 2, _py].HasValue) && _well[_px, _py + 2].HasValue && _well[_px + 2, _py + 2].HasValue,
+                _ => false
+            }; 
+        }
+
         /// <summary>
         /// Al finalizar un ciclo de pieza activa, comprueba la completación de
         /// líneas.
         /// </summary>
         private void CheckLines()
         {
+            var tspin = false;
             var lines = 0;
+
+            // T-spin check
+            if (_shape == 6 && (tspin = CheckTSpin()))
+            {
+                PrintMessage($"T-Spin!", 6);
+                PrintMessage($"+{_pointsPerTSpin}", 7);
+                Score += _pointsPerTSpin;
+                UpdateScoreBoard();
+            }
+
             for (var j = 0; j < _wellHeight; j++)
             {
                 var k = 0;
@@ -460,7 +556,18 @@ namespace TheXDS.CoreBlocks
             {
                 Lines += lines;
                 _combo++;
-                CheckScore(lines);
+
+                // Bravo check
+                var bravo = true;
+                foreach (var b in _well)
+                {
+                    if (b.HasValue)
+                    {
+                        bravo = false;
+                        break;
+                    }
+                }
+                CheckScore(lines, bravo, tspin);
                 DrawWell();
             }
             else
@@ -476,18 +583,42 @@ namespace TheXDS.CoreBlocks
         /// <param name="lines">
         /// Líneas completadas por el jugador en la acción actual.
         /// </param>
-        private void CheckScore(int lines)
+        /// <param name="bravo">
+        /// Premio adicional por limpiar completamente el pozo.
+        /// </param>
+        /// <param name="tspin">
+        /// Premio por ejecutar una maniobra de T-Spin.
+        /// </param>
+        private void CheckScore(in int lines, in bool bravo, in bool tspin)
         {
+            if (tspin)
+            {
+                PrintMessage($"+{_pointsPerBravo}", 7);
+                Score += _pointsPerTSpin * lines;
+            }
+            if (bravo)
+            {
+                PrintMessage($"Bravo!", 6);
+                PrintMessage($"+{_pointsPerBravo}", 7);
+                Score += _pointsPerBravo * lines;
+            }
             PrintMessage(lines == 1 ? "1 Línea" : $"{lines} Líneas!", 8);
-            if (_combo > 1) PrintMessage($"(x{_combo} Combo)", 9);            
-            Score += lines * 100 * _combo;
+            if (_combo > 1) PrintMessage($"(x{_combo} Combo)", 9);
+            Score += lines * _pointsPerLine * _combo;
             PrintMessage($"Líneas {Lines}", 11);
-            PrintMessage($"Puntaje {Score}", 12);
-
-            if (Lines > (Level * 10))
+            UpdateScoreBoard();
+            if (Lines > (Level * _linesPerLevel))
             {
                 PrintMessage($"Nivel {++Level}", 14);
             }
+        }
+
+        /// <summary>
+        /// Actualiza el marcador de puntaje y nivel en el encabezado de la ventana de consola.
+        /// </summary>
+        private void UpdateScoreBoard()
+        {
+            Console.Title = $"Nivel {Level}, {Lines} líneas, {Score} Puntos - CoreBlocks";
         }
 
         /// <summary>
@@ -516,7 +647,7 @@ namespace TheXDS.CoreBlocks
         /// existente dentro del juego o al llegar al fondo, o 
         /// <see langword="null"/> si excede los límites del juego.
         /// </returns>
-        private bool? Fits(int relX, int relY, int relR)
+        private bool? Fits(in int relX, in int relY, in int relR)
         {
             lock (_syncLock)
             {
@@ -551,34 +682,18 @@ namespace TheXDS.CoreBlocks
         }
 
         /// <summary>
-        /// Muestra un mensaje que desaparecerá luego de 3000 ms al jugador.
-        /// </summary>
-        /// <param name="message">Mensaje a mostrar.</param>
-        /// <param name="line">Línea en la cual colocar el mensaje.</param>
-        private async void PrintMessage(string message, int line = 1)
-        {
-            lock (_syncLock)
-            {
-                Console.SetCursorPosition(0, _wellYOffset + line);
-                Console.WriteLine(message);
-            }
-            await Task.Delay(3000);
-            lock (_syncLock)
-            {
-                Console.SetCursorPosition(0, _wellYOffset + line);
-                Console.WriteLine(new string(' ', message.Length));
-            }
-        }
-
-        /// <summary>
         /// Intenta ejecutar una rotación en una dirección en particular.
         /// </summary>
         /// <param name="direction">Dirección de rotación.</param>
-        private void Rotate(int direction)
+        private void Rotate(in int direction)
         {
             _ = UpdateShape(0, 0, direction) ||
                 UpdateShape(-1, 0, direction) || // Probar a la izquierda...
+                UpdateShape(-1, -1, direction) || // Probar a la izquierda...
+                UpdateShape(-1, 1, direction) || // Probar a la izquierda...
                 UpdateShape(1, 0, direction) ||  // Probar a la derecha...
+                UpdateShape(1, 1, direction) ||  // Probar a la derecha...
+                UpdateShape(1, -1, direction) ||  // Probar a la derecha...
                 UpdateShape(0, 1, direction);    // Finalmente, probar arriba...
         }
 
@@ -593,7 +708,7 @@ namespace TheXDS.CoreBlocks
         {
             while (KeepPlaying)
             {
-                if (_keyBindings.TryGetValue(Console.ReadKey(true).Key, out var action)) action.Invoke();                
+                if (_keyBindings.TryGetValue(Console.ReadKey(true).Key, out var action)) action.Invoke();
             }
         }
 
@@ -610,19 +725,18 @@ namespace TheXDS.CoreBlocks
                 {
                     await _pauseSource.WaitWhilePausedAsync();
                     UpdateShape(0, 1, 0);
-                    if (_shapeBreaker.Task == await Task.WhenAny(Task.Delay(1000 / Level), _shapeBreaker.Task))
+                    if (_shapeBreaker.Task == await Task.WhenAny(Task.Delay(10000 / Level), _shapeBreaker.Task))
                     {
                         _shapeBreaker = new TaskCompletionSource<bool>();
                         continue;
-                    }                 
+                    }
                 }
                 if (_py < 0) break;
                 _holdUsed = false;
                 TransformRotate(_shape, _px, _py, _r, SetWellBits);
                 CheckLines();
             }
-            KeepPlaying = false;
-            PrintMessage("Fin del juego.");
+            QuitGame();
         }
 
         #endregion
@@ -639,14 +753,15 @@ namespace TheXDS.CoreBlocks
             UpdateShape(0, CalcBottom() - _py, 0);
             _shapeBreaker.SetResult(true);
         }
-
         private void HoldCurrent()
         {
             if (_holdUsed) return;
             _holdUsed = true;
-
-            ClearShape();
-            ClearShadow();
+            lock (_syncLock)
+            {
+                ClearShape();
+                ClearShadow();
+            }
 
             if (!_hold.HasValue)
             {
@@ -655,12 +770,12 @@ namespace TheXDS.CoreBlocks
             }
             else
             {
-                ClearShape(_hold.Value, -6, 2, 0);
+                lock (_syncLock) ClearShape(_hold.Value, -6, 2, 0);
                 var tmphold = _shape;
                 SelectNextShape(_hold.Value);
                 _hold = tmphold;
             }
-            DrawShape(_hold.Value, -6, 2, 0);
+            lock (_syncLock) DrawShape(_hold.Value, -6, 2, 0);
             _shapeBreaker.SetResult(true);
         }
         private void TogglePause()
@@ -674,11 +789,15 @@ namespace TheXDS.CoreBlocks
             {
                 _pauseSource.IsPaused = true;
                 ClearWell();
-                const string pauseMsg = "Juego en pausa";
-                Console.SetCursorPosition(_wellXOffset + 4, _wellYOffset + (_wellHeight / 2));
-                Console.Write(pauseMsg);
+                PrintMainMessage("Juego en pausa");
             }
-            
+        }
+        private void QuitGame()
+        {
+            KeepPlaying = false;
+            PrintMainMessage("Fin del juego.");
+            _py = -4;
+            _shapeBreaker.SetResult(true);
         }
 
         #endregion
@@ -692,6 +811,7 @@ namespace TheXDS.CoreBlocks
         public Task PlayAsync()
         {
             DrawUI();
+            UpdateScoreBoard();
 
             _keyBindings.Add(ConsoleKey.LeftArrow, MoveLeft);
             _keyBindings.Add(ConsoleKey.A, MoveLeft);
@@ -713,6 +833,8 @@ namespace TheXDS.CoreBlocks
             _keyBindings.Add(ConsoleKey.NumPad0, HoldCurrent);
             _keyBindings.Add(ConsoleKey.Pause, TogglePause);
             _keyBindings.Add(ConsoleKey.P, TogglePause);
+            _keyBindings.Add(ConsoleKey.Q, QuitGame);
+            _keyBindings.Add(ConsoleKey.Escape, QuitGame);
 
             return Task.WhenAll(
                 ShapeLoopAsync(),
@@ -722,9 +844,18 @@ namespace TheXDS.CoreBlocks
     }
 
 
-    //https://devblogs.microsoft.com/pfxteam/cooperatively-pausing-async-methods/
+    /// <summary>
+    /// Clase que permite la creación y gestión de objetos
+    /// <see cref="PauseToken"/>, utilizados para pausar la ejecución 
+    /// cooperativa de tareas.
+    /// </summary>
+    /// <seealso href="https://devblogs.microsoft.com/pfxteam/cooperatively-pausing-async-methods/" />
     public class PauseTokenSource
     {
+        /// <summary>
+        /// Obtiene o establece un valor que indica si este orígen de pausa se
+        /// encuentra en estado pausado.
+        /// </summary>
         public bool IsPaused
         {
             get => m_paused != null;
@@ -750,7 +881,11 @@ namespace TheXDS.CoreBlocks
             }
         }
 
-        public PauseToken Token => new PauseToken(this);
+        /// <summary>
+        /// Obtiene un nuevo <see cref="PauseToken"/> que observará el estado
+        /// de esta instancia.
+        /// </summary>
+        public PauseToken Token => new(this);
 
         private volatile TaskCompletionSource<bool>? m_paused;
 
@@ -763,17 +898,35 @@ namespace TheXDS.CoreBlocks
         private static readonly Task<bool> Completed = Task.FromResult(true);
     }
 
+    /// <summary>
+    /// Estructura que representa un token utilizado para pausar temporalmente
+    /// la ejecución de tareas.
+    /// </summary>
+    /// <seealso href="https://devblogs.microsoft.com/pfxteam/cooperatively-pausing-async-methods/" />
     public struct PauseToken
     {
         private readonly PauseTokenSource? m_source;
 
         internal PauseToken(PauseTokenSource source)
-        { 
+        {
             m_source = source;
         }
 
+        /// <summary>
+        /// Obtiene un valor que indica si este <see cref="PauseToken"/> se
+        /// encuentra en estado de pausa.
+        /// </summary>
         public bool IsPaused => m_source?.IsPaused ?? false;
 
+        /// <summary>
+        /// Inicia el estado de pausa, esperando a que el
+        /// <see cref="PauseTokenSource"/> de origen de esta instancia salga
+        /// del estado de pausa.
+        /// </summary>
+        /// <returns>
+        /// Un objeto <see cref="Task"/> que finalizará cuando estetoken no se
+        /// encuentre en pausa.
+        /// </returns>
         public Task WaitWhilePausedAsync()
         {
             return IsPaused ?
