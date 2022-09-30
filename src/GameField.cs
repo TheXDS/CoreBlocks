@@ -25,7 +25,6 @@
 // THE SOFTWARE.
 
 using System;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Linq;
@@ -840,98 +839,6 @@ namespace TheXDS.CoreBlocks
                 ShapeLoopAsync(),
                 Task.Run(HandleInput)
             );
-        }
-    }
-
-
-    /// <summary>
-    /// Clase que permite la creación y gestión de objetos
-    /// <see cref="PauseToken"/>, utilizados para pausar la ejecución 
-    /// cooperativa de tareas.
-    /// </summary>
-    /// <seealso href="https://devblogs.microsoft.com/pfxteam/cooperatively-pausing-async-methods/" />
-    public class PauseTokenSource
-    {
-        /// <summary>
-        /// Obtiene o establece un valor que indica si este orígen de pausa se
-        /// encuentra en estado pausado.
-        /// </summary>
-        public bool IsPaused
-        {
-            get => m_paused != null;
-            set
-            {
-                if (value)
-                {
-                    Interlocked.CompareExchange(ref m_paused, new TaskCompletionSource<bool>(), null);
-                }
-                else
-                {
-                    while (true)
-                    {
-                        var tcs = m_paused;
-                        if (tcs is null) return;
-                        if (Interlocked.CompareExchange(ref m_paused, null, tcs) == tcs)
-                        {
-                            tcs.SetResult(true);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// Obtiene un nuevo <see cref="PauseToken"/> que observará el estado
-        /// de esta instancia.
-        /// </summary>
-        public PauseToken Token => new(this);
-
-        private volatile TaskCompletionSource<bool>? m_paused;
-
-        internal Task WaitWhilePausedAsync()
-        {
-            var cur = m_paused;
-            return cur != null ? cur.Task : Completed;
-        }
-
-        private static readonly Task<bool> Completed = Task.FromResult(true);
-    }
-
-    /// <summary>
-    /// Estructura que representa un token utilizado para pausar temporalmente
-    /// la ejecución de tareas.
-    /// </summary>
-    /// <seealso href="https://devblogs.microsoft.com/pfxteam/cooperatively-pausing-async-methods/" />
-    public struct PauseToken
-    {
-        private readonly PauseTokenSource? m_source;
-
-        internal PauseToken(PauseTokenSource source)
-        {
-            m_source = source;
-        }
-
-        /// <summary>
-        /// Obtiene un valor que indica si este <see cref="PauseToken"/> se
-        /// encuentra en estado de pausa.
-        /// </summary>
-        public bool IsPaused => m_source?.IsPaused ?? false;
-
-        /// <summary>
-        /// Inicia el estado de pausa, esperando a que el
-        /// <see cref="PauseTokenSource"/> de origen de esta instancia salga
-        /// del estado de pausa.
-        /// </summary>
-        /// <returns>
-        /// Un objeto <see cref="Task"/> que finalizará cuando estetoken no se
-        /// encuentre en pausa.
-        /// </returns>
-        public Task WaitWhilePausedAsync()
-        {
-            return IsPaused ?
-                m_source!.WaitWhilePausedAsync() :
-                Task.CompletedTask;
         }
     }
 }
