@@ -500,14 +500,31 @@ namespace TheXDS.CoreBlocks
             TransformRotate(_nextShape, _wellWidth + 2, 2, 0, DrawBlock);
         }
 
+        /// <summary>
+        /// Ejecuta una comprobación de maniobra T-Spin.
+        /// </summary>
+        /// <returns>
+        /// <see langword="true"/> si el sitio final de colocación de la pieza
+        /// cumple con los requisitos de un T-Spin, <see langword="false"/> en
+        /// caso contrario.
+        /// </returns>
         private bool CheckTSpin()
         {
+            bool HorizontalCheck()
+            {
+                return _py < _wellHeight - 2
+                    ? (_well[_px, _py].HasValue ^ _well[_px + 2, _py].HasValue) && _well[_px, _py + 2].HasValue && _well[_px + 2, _py + 2].HasValue
+                    : _well[_px, _py].HasValue ^ _well[_px + 2, _py].HasValue;
+            }
+
             return _r switch
             {
-                0 => (_well[_px, _py].HasValue ^ _well[_px + 2, _py].HasValue) && _well[_px, _py + 2].HasValue && _well[_px + 1, _py + 2].HasValue && _well[_px + 2, _py + 2].HasValue,
-                2 => (_well[_px, _py].HasValue ^ _well[_px + 2, _py].HasValue) && _well[_px, _py + 2].HasValue && _well[_px + 2, _py + 2].HasValue,
+                0 or 2 => HorizontalCheck(),
+                1 => _well[_px + 2, _py].HasValue && _well[_px, _py + 2].HasValue && _well[_px + 2, _py + 2].HasValue,
+                3 => _well[_px, _py].HasValue && _well[_px, _py + 2].HasValue && _well[_px + 2, _py + 2].HasValue,
                 _ => false
-            }; 
+            };
+
         }
 
         /// <summary>
@@ -646,13 +663,14 @@ namespace TheXDS.CoreBlocks
         /// existente dentro del juego o al llegar al fondo, o 
         /// <see langword="null"/> si excede los límites del juego.
         /// </returns>
-        private bool? Fits(in int relX, in int relY, in int relR)
+        private bool? Fits(in int relX, in int relY, int relR)
         {
             lock (_syncLock)
             {
                 bool? retval = true;
                 TransformRotate(_shape, _px + relX, _py + relY, (byte)(_r + relR), (_, px, py) =>
                 {
+                    if (_shape == 1 && relR != 0) px++;
                     if (px < 0 || px >= _wellWidth) { retval = null; return false; }
                     if (py < 0 || py >= _wellHeight) { retval = false; return false; }
                     if (_well[px, py].HasValue) { retval = false; return false; }
@@ -687,13 +705,21 @@ namespace TheXDS.CoreBlocks
         private void Rotate(in int direction)
         {
             _ = UpdateShape(0, 0, direction) ||
-                UpdateShape(-1, 0, direction) || // Probar a la izquierda...
-                UpdateShape(-1, -1, direction) || // Probar a la izquierda...
-                UpdateShape(-1, 1, direction) || // Probar a la izquierda...
-                UpdateShape(1, 0, direction) ||  // Probar a la derecha...
-                UpdateShape(1, 1, direction) ||  // Probar a la derecha...
-                UpdateShape(1, -1, direction) ||  // Probar a la derecha...
-                UpdateShape(0, 1, direction);    // Finalmente, probar arriba...
+
+                // Kicks
+                // izquierda...
+                UpdateShape(-1, 0, direction) ||
+                UpdateShape(-1, -1, direction) ||
+                UpdateShape(-1, 1, direction) ||
+                (_shape == 1 && UpdateShape(-2, 0, direction)) ||
+
+                // derecha...
+                UpdateShape(1, 0, direction) ||
+                UpdateShape(1, 1, direction) ||
+                UpdateShape(1, -1, direction) ||
+
+                // arriba...
+                UpdateShape(0, 1, direction);
         }
 
         #endregion
@@ -724,7 +750,7 @@ namespace TheXDS.CoreBlocks
                 {
                     await _pauseSource.WaitWhilePausedAsync();
                     UpdateShape(0, 1, 0);
-                    if (_shapeBreaker.Task == await Task.WhenAny(Task.Delay(10000 / Level), _shapeBreaker.Task))
+                    if (_shapeBreaker.Task == await Task.WhenAny(Task.Delay(1000000 / Level), _shapeBreaker.Task))
                     {
                         _shapeBreaker = new TaskCompletionSource<bool>();
                         continue;
