@@ -199,6 +199,11 @@ namespace TheXDS.CoreBlocks
 
         #region Métodos de dibujo básicos
 
+        private byte SelectShape()
+        {
+            return (byte)_rnd.Next(Shapes.Length);
+        }
+
         /// <summary>
         /// Borra el área de juego.
         /// </summary>
@@ -322,7 +327,11 @@ namespace TheXDS.CoreBlocks
             var bottom = CalcBottom();
             if (bottom > _py)
             {
-                TransformRotate(_shape, _px, bottom, _r, (_, px, py) => DrawBlock(-1, px, py));
+                TransformRotate(_shape, _px, bottom, _r, (_, px, py) =>
+                {
+                    Console.ForegroundColor = ConsoleColor.DarkGray;
+                    DrawBlock(-1, px, py);
+                });
             }
         }
 
@@ -467,7 +476,7 @@ namespace TheXDS.CoreBlocks
                 ClearShape();
                 _px += relX;
                 _py += relY;
-                _r = (byte)((_r + relR) % (_shape switch { 0 => 1, 1 => 2, _ => 4 }));
+                _r = (byte)((byte)(_r + relR) % (_shape switch { 0 => 1, 1 => 2, _ => 4 }));
                 DrawShadow();
                 DrawShape();
             }
@@ -496,7 +505,7 @@ namespace TheXDS.CoreBlocks
         {
             SelectNextShape(_nextShape);
             TransformRotate(_nextShape, _wellWidth + 2, 2, 0, (_, px, py) => ClearBlock(px, py));
-            _nextShape = (byte)_rnd.Next(Shapes.Length);
+            _nextShape = SelectShape();
             TransformRotate(_nextShape, _wellWidth + 2, 2, 0, DrawBlock);
         }
 
@@ -742,7 +751,7 @@ namespace TheXDS.CoreBlocks
         /// </summary>
         private async Task ShapeLoopAsync()
         {
-            _nextShape = (byte)_rnd.Next(Shapes.Length);
+            _nextShape = SelectShape();
             while (KeepPlaying)
             {
                 SelectNextShape();
