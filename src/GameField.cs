@@ -39,6 +39,19 @@ namespace TheXDS.CoreBlocks
         #region Configuración
 
         /// <summary>
+        /// Nivel máximo posible.
+        /// </summary>
+        private const int _maxLevel = 20;
+
+        /// <summary>
+        /// Milisegundos a quitar del tiempo de ciclo de pieza por cada nivel
+        /// adicional.
+        /// </summary>
+        private const int _levelStep = 100;
+
+        private const int _maxLevelTime = _maxLevel * _levelStep;
+
+        /// <summary>
         /// Define la cantidad de líneas necesarias para subir de nivel.
         /// </summary>
         private const int _linesPerLevel = 20;
@@ -176,6 +189,11 @@ namespace TheXDS.CoreBlocks
         private int _combo;
 
         /// <summary>
+        /// Usado en la detección de T-Spins.
+        /// </summary>
+        private bool _rotateMove = false;
+
+        /// <summary>
         /// Obtiene o establece el nivel de juego activo.
         /// </summary>
         public int Level { get; set; } = 1;
@@ -199,11 +217,6 @@ namespace TheXDS.CoreBlocks
 
         #region Métodos de dibujo básicos
 
-        private byte SelectShape()
-        {
-            return (byte)_rnd.Next(Shapes.Length);
-        }
-
         /// <summary>
         /// Borra el área de juego.
         /// </summary>
@@ -224,7 +237,7 @@ namespace TheXDS.CoreBlocks
         private static void DrawUI()
         {
             Console.SetCursorPosition(_wellXOffset, _wellYOffset);
-            Console.Write($"+{new string('-', _wellWidth * 2)}+");
+            Console.Write($"+{new string(' ', _wellWidth * 2)}+");
             for (var j = 1; j <= _wellHeight; j++)
             {
                 Console.SetCursorPosition(_wellXOffset, _wellYOffset + j);
@@ -362,16 +375,22 @@ namespace TheXDS.CoreBlocks
         /// <param name="line">Línea en la cual colocar el mensaje.</param>
         private static async void PrintMessage(string message, int line = 1)
         {
+            PutMessage(message, line);
+            await Task.Delay(3000);
+            PutMessage(new string(' ', message.Length), line);
+        }
+
+        /// <summary>
+        /// Coloca un mensaje a la par del área de juego.
+        /// </summary>
+        /// <param name="message">Mensaje a mostrar.</param>
+        /// <param name="line">Línea en la cual colocar el mensaje.</param>
+        private static void PutMessage(string message, int line)
+        {
             lock (_syncLock)
             {
                 Console.SetCursorPosition(0, _wellYOffset + line);
                 Console.WriteLine(message);
-            }
-            await Task.Delay(3000);
-            lock (_syncLock)
-            {
-                Console.SetCursorPosition(0, _wellYOffset + line);
-                Console.WriteLine(new string(' ', message.Length));
             }
         }
 
@@ -484,6 +503,17 @@ namespace TheXDS.CoreBlocks
         }
 
         /// <summary>
+        /// Selecciona una figura siguiendo un algoritmo de selección adecuado.
+        /// </summary>
+        /// <returns>
+        /// Una figura seleccionada según un algoritmo adecuado.
+        /// </returns>
+        private static byte SelectShape()
+        {
+            return (byte)_rnd.Next(Shapes.Length);
+        }
+
+        /// <summary>
         /// Establece la figura activa a la figura especificada, reinicializando
         /// su posición y rotación.
         /// </summary>
@@ -532,7 +562,7 @@ namespace TheXDS.CoreBlocks
                 1 => _well[_px + 2, _py].HasValue && _well[_px, _py + 2].HasValue && _well[_px + 2, _py + 2].HasValue,
                 3 => _well[_px, _py].HasValue && _well[_px, _py + 2].HasValue && _well[_px + 2, _py + 2].HasValue,
                 _ => false
-            };
+            } && _rotateMove;
 
         }
 
@@ -643,7 +673,10 @@ namespace TheXDS.CoreBlocks
         /// </summary>
         private void UpdateScoreBoard()
         {
-            Console.Title = $"Nivel {Level}, {Lines} líneas, {Score} Puntos - CoreBlocks";
+            PutMessage($"Nivel {Level}", 20);
+            PutMessage($"{Lines} líneas", 21);
+            PutMessage("Puntos:", 23);
+            PutMessage(Score.ToString(), 24);
         }
 
         /// <summary>
@@ -731,6 +764,19 @@ namespace TheXDS.CoreBlocks
                 UpdateShape(0, 1, direction);
         }
 
+        /// <summary>
+        /// Obtiene la cantidad de milisegundos de espera del ciclo principal
+        /// del juego basado en el nivel actual.
+        /// </summary>
+        /// <returns>
+        /// La cantidad de milisegundos a esperar en el ciclo principal del
+        /// juego.
+        /// </returns>
+        private int GetLevelTime()
+        {
+            return _maxLevelTime - ((Level - 1) * _levelStep);
+        }
+
         #endregion
 
         #region Hilos de ejecución
@@ -759,7 +805,7 @@ namespace TheXDS.CoreBlocks
                 {
                     await _pauseSource.WaitWhilePausedAsync();
                     UpdateShape(0, 1, 0);
-                    if (_shapeBreaker.Task == await Task.WhenAny(Task.Delay(1000000 / Level), _shapeBreaker.Task))
+                    if (_shapeBreaker.Task == await Task.WhenAny(Task.Delay(GetLevelTime()), _shapeBreaker.Task))
                     {
                         _shapeBreaker = new TaskCompletionSource<bool>();
                         continue;
@@ -777,18 +823,68 @@ namespace TheXDS.CoreBlocks
 
         #region Acciones de control del juego
 
-        private void MoveLeft() => UpdateShape(-1, 0, 0);
-        private void MoveRight() => UpdateShape(1, 0, 0);
-        private void RotateCw() => Rotate(1);
-        private void RotateCcw() => Rotate(-1);
-        private void SoftDrop() => UpdateShape(0, 1, 0);
+        /// <summary>
+        /// Desplaza la pieza activa una posición hacia la izquierda.
+        /// </summary>
+        private void MoveLeft()
+        {
+            _rotateMove = false; 
+            UpdateShape(-1, 0, 0);
+        }
+
+        /// <summary>
+        /// Desplaza la pieza activa una posición hacia la derecha.
+        /// </summary>
+        private void MoveRight()
+        {
+            _rotateMove = false; 
+            UpdateShape(1, 0, 0);
+        }
+
+        /// <summary>
+        /// Gira la pieza activa hacia la derecha.
+        /// </summary>
+        private void RotateCw()
+        {
+            _rotateMove = true;
+            Rotate(1);
+        }
+
+        /// <summary>
+        /// Gira la pieza activa hacia la izquierda.
+        /// </summary>
+        private void RotateCcw()
+        {
+            _rotateMove = true;
+            Rotate(-1);
+        }
+
+        /// <summary>
+        /// Baja la pieza rápidamente.
+        /// </summary>
+        private void SoftDrop()
+        {
+            UpdateShape(0, 1, 0);
+        }
+
+        /// <summary>
+        /// Suelta la pieza y la envía a su ubucación final en el pozo de forma
+        /// inmediata.
+        /// </summary>
         private void HardDrop()
         {
             UpdateShape(0, CalcBottom() - _py, 0);
             _shapeBreaker.SetResult(true);
         }
+
+        /// <summary>
+        /// Intercambia la pieza activa con la pieza actualmente en Hold. Si
+        /// Hold no contiene ninguna pieza, envía la pieza actual al Hold e
+        /// inicia un nuevo ciclo de pieza.
+        /// </summary>
         private void HoldCurrent()
         {
+            _rotateMove = false;
             if (_holdUsed) return;
             _holdUsed = true;
             lock (_syncLock)
@@ -812,6 +908,10 @@ namespace TheXDS.CoreBlocks
             lock (_syncLock) DrawShape(_hold.Value, -6, 2, 0);
             _shapeBreaker.SetResult(true);
         }
+
+        /// <summary>
+        /// Activa o desactiva la pausa del juego.
+        /// </summary>
         private void TogglePause()
         {
             if (_pauseSource.IsPaused)
@@ -826,6 +926,10 @@ namespace TheXDS.CoreBlocks
                 PrintMainMessage("Juego en pausa");
             }
         }
+
+        /// <summary>
+        /// Termina el juego.
+        /// </summary>
         private void QuitGame()
         {
             KeepPlaying = false;
