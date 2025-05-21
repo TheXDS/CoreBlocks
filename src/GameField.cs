@@ -49,6 +49,10 @@ namespace TheXDS.CoreBlocks
         /// </summary>
         private const int _levelStep = 100;
 
+        /// <summary>
+        /// Indica la cantidad máxima de tiempo inicial para el temporizador
+        /// principal.
+        /// </summary>
         private const int _maxLevelTime = _maxLevel * _levelStep;
 
         /// <summary>
@@ -97,7 +101,7 @@ namespace TheXDS.CoreBlocks
         /// Define la colección de figuras disponibles en el juego.
         /// </summary>
         private static readonly byte[] Shapes =
-        {
+        [
             0b_1100_1100, // O, 0
             0b_1111_0000, // I, 1
             0b_0100_0111, // J, 2
@@ -105,7 +109,7 @@ namespace TheXDS.CoreBlocks
             0b_1100_0110, // Z, 4
             0b_0110_1100, // S, 5
             0b_0100_1110, // T, 6
-        };
+        ];
 
         #endregion
 
@@ -563,7 +567,6 @@ namespace TheXDS.CoreBlocks
                 3 => _well[_px, _py].HasValue && _well[_px, _py + 2].HasValue && _well[_px + 2, _py + 2].HasValue,
                 _ => false
             } && _rotateMove;
-
         }
 
         /// <summary>
