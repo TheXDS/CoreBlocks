@@ -33,7 +33,7 @@ namespace TheXDS.CoreBlocks
     /// la ejecución de tareas.
     /// </summary>
     /// <seealso href="https://devblogs.microsoft.com/pfxteam/cooperatively-pausing-async-methods/" />
-    public struct PauseToken
+    public readonly struct PauseToken
     {
         private readonly PauseTokenSource? m_source;
 
@@ -46,7 +46,7 @@ namespace TheXDS.CoreBlocks
         /// Obtiene un valor que indica si este <see cref="PauseToken"/> se
         /// encuentra en estado de pausa.
         /// </summary>
-        public bool IsPaused => m_source?.IsPaused ?? false;
+        public readonly bool IsPaused => m_source?.IsPaused ?? false;
 
         /// <summary>
         /// Inicia el estado de pausa, esperando a que el
@@ -61,7 +61,11 @@ namespace TheXDS.CoreBlocks
         {
             return IsPaused ?
                 m_source!.WaitWhilePausedAsync() :
+#if NET45
+                Task.Run(() => { });
+#else
                 Task.CompletedTask;
+#endif
         }
     }
 }

@@ -36,6 +36,12 @@ namespace TheXDS.CoreBlocks
     /// </summary>
     internal class GameField
     {
+        private readonly struct TransformRotateResult(int x, int y)
+        {
+            public int X { get; } = x;
+            public int Y { get; } = y;
+        }
+
         #region Configuración
 
         /// <summary>
@@ -130,7 +136,7 @@ namespace TheXDS.CoreBlocks
         /// Contiene una colección de las teclas configuradas para controlar el
         /// juego.
         /// </summary>
-        private readonly Dictionary<ConsoleKey, Action> _keyBindings = new();
+        private readonly Dictionary<ConsoleKey, Action> _keyBindings = [];
 
         #endregion
 
@@ -471,15 +477,15 @@ namespace TheXDS.CoreBlocks
             {
                 if (((shapeData << j) & 128) != 0)
                 {
-                    (int px, int py) = (r % 4) switch
+                    TransformRotateResult result = (r % 4) switch
                     {
-                        0 => (x + (j % 4), y + (j / 4)),
-                        1 => (x + (1 - (j / 4)), y + (j % 4)),
-                        2 => (x + (2 - (j % 4)), y + (1 - (j / 4))),
-                        3 => (x + (j / 4), y + (3 - (j % 4))),
+                        0 => new(x + (j % 4), y + (j / 4)),
+                        1 => new(x + (1 - (j / 4)), y + (j % 4)),
+                        2 => new(x + (2 - (j % 4)), y + (1 - (j / 4))),
+                        3 => new(x + (j / 4), y + (3 - (j % 4))),
                         _ => throw new InvalidOperationException()
                     };
-                    if (!function(shape, px, py)) return;
+                    if (!function(shape, result.X, result.Y)) return;
                 }
             }
         }
