@@ -6,10 +6,8 @@ namespace TheXDS.CoreBlocks;
 /// <summary>
 /// Implementa funciones de dibujado del juego sobre la ventana de la consola.
 /// </summary>
-public class ConsoleGameDrawing(GameConfig config) : IGameDrawing
+public class ConsoleGameDrawing(GameConfig config) : ConsoleBasicDrawing, IGameDrawing
 {
-    private const int _wellXOffset = 12;
-    private const int _wellYOffset = 0;
     private static readonly object _syncLock = new();
 
     /// <summary>
@@ -22,64 +20,24 @@ public class ConsoleGameDrawing(GameConfig config) : IGameDrawing
     /// </summary>
     public void DrawUI()
     {
-        Console.SetCursorPosition(_wellXOffset, _wellYOffset);
+        Console.SetCursorPosition(WellXOffset, WellYOffset);
         Console.Write($"+{new string(' ', Config.WellWidth * 2)}+");
         for (var j = 1; j <= Config.WellHeight; j++)
         {
-            Console.SetCursorPosition(_wellXOffset, _wellYOffset + j);
+            Console.SetCursorPosition(WellXOffset, WellYOffset + j);
             Console.Write("|");
-            Console.SetCursorPosition(_wellXOffset + Config.WellWidth * 2 + 1, _wellYOffset + j);
+            Console.SetCursorPosition(WellXOffset + Config.WellWidth * 2 + 1, WellYOffset + j);
             Console.Write("|");
         }
-        Console.SetCursorPosition(_wellXOffset, _wellYOffset + Config.WellHeight + 1);
+        Console.SetCursorPosition(WellXOffset, WellYOffset + Config.WellHeight + 1);
         Console.Write($"+{new string('-', Config.WellWidth * 2)}+");
-        Console.SetCursorPosition(_wellXOffset + Config.WellWidth * 2 + 4, _wellYOffset);
+        Console.SetCursorPosition(WellXOffset + Config.WellWidth * 2 + 4, WellYOffset);
         Console.Write("Siguiente:");
 
         if (Config.AllowHold)
         {
-            Console.SetCursorPosition(_wellXOffset - 10, _wellYOffset);
+            Console.SetCursorPosition(WellXOffset - 10, WellYOffset);
             Console.Write("Hold:");
-        }
-    }
-
-    /// <summary>
-    /// Borra un bloque en las coordenadas correspondientes del juego.
-    /// </summary>
-    /// <param name="x">Posición X del bloque.</param>
-    /// <param name="y">Posición Y del bloque.</param>
-    public void ClearBlock(in int x, in int y)
-    {
-        Console.SetCursorPosition(_wellXOffset + (x * 2) + 1, _wellYOffset + y + 1);
-        Console.ResetColor();
-        Console.Write("  ");
-    }
-
-    /// <summary>
-    /// Dibuja un bloque en las coordenadas correspondientes del juego.
-    /// </summary>
-    /// <param name="block">Color del bloque a dibujar.</param>
-    /// <param name="x">Posición X del bloque.</param>
-    /// <param name="y">Posición Y del bloque.</param>
-    public void DrawBlock(int block, int x, int y)
-    {
-        Console.SetCursorPosition(_wellXOffset + (x * 2) + 1, _wellYOffset + y + 1);
-        Console.BackgroundColor = (ConsoleColor)((block + 1) % 16);
-        Console.Write("[]");
-        Console.ResetColor();
-    }
-
-    /// <summary>
-    /// Coloca un mensaje a la par del área de juego.
-    /// </summary>
-    /// <param name="message">Mensaje a mostrar.</param>
-    /// <param name="line">Línea en la cual colocar el mensaje.</param>
-    public void PutMessage(string message, int line)
-    {
-        lock (_syncLock)
-        {
-            Console.SetCursorPosition(0, _wellYOffset + line);
-            Console.WriteLine(message);
         }
     }
 
@@ -90,8 +48,8 @@ public class ConsoleGameDrawing(GameConfig config) : IGameDrawing
     public void PrintMainMessage(in string message)
     {
         var lines = message.Split('\n');
-        var width = _wellXOffset + (Config.WellWidth / 2) - 1;
-        var height = _wellYOffset + (Config.WellHeight / 2) - (lines.Length / 2);
+        var width = WellXOffset + (Config.WellWidth / 2) - 1;
+        var height = WellYOffset + (Config.WellHeight / 2) - (lines.Length / 2);
 
         lock (_syncLock)
         {

@@ -25,21 +25,97 @@
 // THE SOFTWARE.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
-namespace TheXDS.CoreBlocks
+namespace TheXDS.CoreBlocks;
+
+internal static class Program
 {
-    internal static class Program
+    private static async Task Main()
     {
-        private static async Task Main()
+        Console.Clear();
+        while (true)
         {
-            Console.Clear();
-            Console.CursorVisible = false;
-            var g = new GameField(GameConfig.Extended);
-            await g.PlayAsync();
-            await Task.Delay(5000);
-            Console.Clear();
-            Console.CursorVisible = true;
+            Console.Title = "Coreblocks";
+            if (SelectGame() is { } config)
+            {
+                Console.CursorVisible = false;
+                var g = new GameField(config, new ConsoleGameDrawing(config));
+                Console.Clear();
+                await g.PlayAsync();
+                await Task.Delay(5000);
+                Console.Clear();
+                Console.CursorVisible = true;
+            }
+            else
+            {
+                break;
+            }
         }
     }
+
+    private static readonly IReadOnlyDictionary<string, GameConfig> _gameConfigs = new Dictionary<string, GameConfig>()
+    {
+        { "Estándar", GameConfig.Standard },
+        { "Clásico", GameConfig.Classic },
+        { "Extendido", GameConfig.Extended },
+        { "Gigante", GameConfig.Huge }
+    }.AsReadOnly();
+
+    private static GameConfig? SelectGame()
+    {
+        DrawTitleScreen();
+        int a = 0;
+        Console.WriteLine("Seleccione el modo de juego:");
+        foreach (var config in _gameConfigs)
+        {
+            Console.WriteLine($"  {++a}: {config.Key}");
+        }
+        Console.WriteLine($"  0: Salir");
+        Console.Write("Ingrese el número del modo de juego: ");
+        while (true)
+        {
+            if (int.TryParse(Console.ReadLine(), out int selected) && selected >= 0 && selected <= _gameConfigs.Count)
+            {
+                if (selected == 0)
+                {
+                    return null;
+                }
+                Console.Title = $"{_gameConfigs.Keys.ElementAt(selected - 1)} - Coreblocks";
+                return _gameConfigs.Values.ElementAt(selected - 1);
+            }
+            Console.Write("Entrada inválida. Intente de nuevo: ");
+        }
+
+    }
+
+    private static void DrawTitleScreen()
+    {
+        ConsoleBasicDrawing drawing = new();
+        var r = 0;
+        foreach (var row in TitleScreen)
+        {
+            var c = 0;
+            foreach (var cell in row)
+            {
+                drawing.DrawBlock(cell, c, r);
+                c++;
+            }
+            r++;
+        }
+        Console.WriteLine();
+    }
+
+    private static readonly byte[][] TitleScreen =
+    [
+        [15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15],
+        [15,1,1,1,15,15,15,15,15,15,15,15,5,15,15,6,15,15,15,15,15,8,15,15,15,15,15,15],
+        [15,1,15,15,2,2,2,3,3,4,4,4,5,15,15,6,2,2,2,7,7,8,15,15,15,9,9,15],
+        [15,1,15,15,2,15,2,3,15,4,4,4,5,5,5,6,2,15,2,7,15,8,15,8,9,9,15,15],
+        [15,1,15,15,2,15,2,3,15,4,15,15,5,15,5,6,2,15,2,7,15,8,8,15,15,15,9,15],
+        [15,1,1,1,2,2,2,3,15,4,4,15,5,5,5,6,2,2,2,7,7,8,15,8,9,9,15,15],
+        [15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15]
+    ];
 }

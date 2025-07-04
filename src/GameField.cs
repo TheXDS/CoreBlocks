@@ -33,7 +33,7 @@ namespace TheXDS.CoreBlocks;
 /// <summary>
 /// Define una instancia del área de juego.
 /// </summary>
-internal class GameField(GameConfig config)
+internal class GameField(GameConfig config, IGameDrawing gameDrawing)
 {
     private readonly struct TransformRotateResult(int x, int y)
     {
@@ -46,7 +46,7 @@ internal class GameField(GameConfig config)
     /// </summary>
     public GameConfig Config { get; } = config;
 
-    public IGameDrawing GameDrawing { get; } = new ConsoleGameDrawing(config);
+    public IGameDrawing GameDrawing { get; } = gameDrawing;
 
     /// <summary>
     /// Obtiene el estado actual del juego.
