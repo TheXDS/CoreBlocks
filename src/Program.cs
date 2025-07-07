@@ -61,7 +61,8 @@ internal static class Program
         { "Estándar", GameConfig.Standard },
         { "Clásico", GameConfig.Classic },
         { "Extendido", GameConfig.Extended },
-        { "Gigante", GameConfig.Huge }
+        { "Gigante", GameConfig.Huge },
+        { "Head-start", GameConfig.HeadStart }
     }.AsReadOnly();
 
     private static GameConfig? SelectGame()
@@ -88,7 +89,6 @@ internal static class Program
             }
             Console.Write("Entrada inválida. Intente de nuevo: ");
         }
-
     }
 
     private static void DrawTitleScreen()
@@ -100,7 +100,7 @@ internal static class Program
             var c = 0;
             foreach (var cell in row)
             {
-                drawing.DrawBlock(cell, c, r);
+                if (cell != 15) drawing.DrawBlock(cell, c, r);
                 c++;
             }
             r++;
