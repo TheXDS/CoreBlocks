@@ -62,7 +62,9 @@ internal static class Program
         { "Clásico", GameConfig.Classic },
         { "Extendido", GameConfig.Extended },
         { "Gigante", GameConfig.Huge },
-        { "Head-start", GameConfig.HeadStart }
+        { "Head-start", GameConfig.HeadStart },
+        { "Bravo test", GameConfig.BravoTest },
+
     }.AsReadOnly();
 
     private static GameConfig? SelectGame()

@@ -51,7 +51,7 @@ internal class GameField(GameConfig config, IGameDrawing gameDrawing)
     /// <summary>
     /// Obtiene el estado actual del juego.
     /// </summary>
-    public GameState CurrentState { get; } = config.DefaultState ?? new(config);
+    public GameState CurrentState { get; } = config.DefaultState.Invoke() ?? new(config);
 
     private static readonly object _syncLock = new();
 
@@ -341,7 +341,7 @@ internal class GameField(GameConfig config, IGameDrawing gameDrawing)
     {
         SelectNextShape(_nextShape);
         TransformRotate(_nextShape, Config.WellWidth + 2, 2, 0, (_, px, py) => GameDrawing.ClearBlock(px, py));
-        _nextShape = Config.NextBlockSelector.Invoke();
+        _nextShape = Config.NextBlockSelector.Invoke(_nextShape);
         TransformRotate(_nextShape, Config.WellWidth + 2, 2, 0, GameDrawing.DrawBlock);
     }
 
@@ -451,20 +451,21 @@ internal class GameField(GameConfig config, IGameDrawing gameDrawing)
     /// </param>
     private void CheckScore(in int lines, in bool bravo, in bool tspin)
     {
+        int scoreToAdd = lines * Config.PointsPerLine;
         if (tspin)
         {
-            PrintMessage($"+{Config.PointsPerBravo}", 7);
-            Score += Config.PointsPerTSpin * lines;
+            PrintMessage($"+{Config.PointsPerBravo * lines}", 7);
+            scoreToAdd += Config.PointsPerTSpin * lines;
         }
         if (bravo)
         {
             PrintMessage($"Bravo!", 6);
-            PrintMessage($"+{Config.PointsPerBravo}", 7);
-            Score += Config.PointsPerBravo * lines;
+            PrintMessage($"+{Config.PointsPerBravo * lines}", 7);
+            scoreToAdd += Config.PointsPerBravo * lines;
         }
         PrintMessage(lines == 1 ? "1 Línea" : $"{lines} Líneas!", 8);
         if (_combo > 1) PrintMessage($"(x{_combo} Combo)", 9);
-        Score += lines * Config.PointsPerLine * _combo;
+        Score += scoreToAdd * _combo;
         PrintMessage($"Líneas {Lines}", 11);
         UpdateScoreBoard();
         if (Lines > (Level * Config.LinesPerLevel))
@@ -602,7 +603,7 @@ internal class GameField(GameConfig config, IGameDrawing gameDrawing)
     /// </summary>
     private async Task ShapeLoopAsync()
     {
-        _nextShape = Config.NextBlockSelector.Invoke();
+        _nextShape = Config.NextBlockSelector.Invoke(null);
         while (KeepPlaying)
         {
             SelectNextShape();

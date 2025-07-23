@@ -30,8 +30,8 @@ public readonly partial record struct GameConfig(
     int WellHeight,
     bool AllowHold,
     ShapeDefinition[] ShapeSet,
-    Func<byte> NextBlockSelector,
-    GameState? DefaultState = null,
+    Func<byte?, byte> NextBlockSelector,
+    Func<GameState>? DefaultState = null,
     IEnumerable<KeyValuePair<ConsoleKey, Action<GameState>>>? ExtraKeyBindings = null)
 {
     /// <summary>
@@ -62,8 +62,8 @@ public readonly partial record struct GameConfig(
     public static GameConfig Standard { get; } = Classic with
     { 
         AllowHold = true,
-        PointsPerTSpin = 400,
-        PointsPerBravo = 800,
+        PointsPerTSpin = 1000,
+        PointsPerBravo = 2500,
     };
 
     /// <summary>
@@ -80,9 +80,9 @@ public readonly partial record struct GameConfig(
     /// Obtiene una configuración de juego estándar con un área de juego con un
     /// patrón inicial.
     /// </summary>
-    public static GameConfig HeadStart { get; } = Standard with
+    public static GameConfig HeadStart => Standard with
     {
-        DefaultState = new GameState(new byte?[10, 24]
+        DefaultState = () => new GameState(new byte?[10, 24]
         {
             {null,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8},
             {null,null,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8,8},
@@ -98,6 +98,27 @@ public readonly partial record struct GameConfig(
     };
 
     /// <summary>
+    /// Obtiene una configuración de prueba para los Bravo.
+    /// </summary>
+    public static GameConfig BravoTest => Standard with
+    {
+        DefaultState = () => new GameState(new byte?[10, 24]
+        {
+            {null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,1,1,8,8,8,8},
+            {null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,2,2,7,7,7,7},
+            {null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3,3,6,6,6,6},
+            {null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,4,4,5,5,5,5},
+            {null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,4,4,4,4},
+            {null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null, null,null, null, null},
+            {null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,5,5,3,3,3,3},
+            {null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,6,6,2,2,2,2},
+            {null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,7,7,1,1,1,1},
+            {null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,8,8,0,0,0,0},
+        }),
+        NextBlockSelector = p => (byte)(1 - (p ?? 1))
+    };
+
+    /// <summary>
     /// Obtiene una configuración de juego estándar con un área de juego
     /// gigantesca.
     /// </summary>
@@ -108,8 +129,16 @@ public readonly partial record struct GameConfig(
 
     static readonly Random _rnd = new();
 
-    private static Func<byte> DefaultNextBlockSelector(ShapeDefinition[] shapes)
+    private static Func<byte?, byte> DefaultNextBlockSelector(ShapeDefinition[] shapes)
     {
-        return () => (byte)_rnd.Next(shapes.Length);
+        return old =>
+        {
+            byte next;
+            do
+            {
+                next = (byte)_rnd.Next(shapes.Length);
+            } while (next == old);
+            return next;
+        };
     }
 }
