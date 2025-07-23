@@ -51,7 +51,7 @@ internal class GameField(GameConfig config, IGameDrawing gameDrawing)
     /// <summary>
     /// Obtiene el estado actual del juego.
     /// </summary>
-    public GameState CurrentState { get; } = config.DefaultState.Invoke() ?? new(config);
+    public GameState CurrentState { get; } = config.DefaultState?.Invoke() ?? new(config);
 
     private static readonly object _syncLock = new();
 
